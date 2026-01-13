@@ -3,3 +3,4 @@ pandas
 altair
 reportlab
 openpyxl
+matplotlib
