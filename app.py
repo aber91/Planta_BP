@@ -112,8 +112,8 @@ df = pd.read_sql(
     parse_dates=["datetime"]
 )
 
-if not df.empty:
-    df["dia"] = df["datetime"].dt.date
+# Crear SIEMPRE la columna 'dia'
+df["dia"] = pd.to_datetime(df["datetime"], errors="coerce").dt.date
 
 df_envio = pd.read_sql(
     "SELECT * FROM envio_emisario",
