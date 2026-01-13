@@ -350,7 +350,7 @@ with tab_gestion:
             conn.commit()
     
             st.success("Analíticas actualizadas correctamente")
-            st.experimental_rerun()
+            st.rerun()
         
     # ---------- AÑADIR MANUAL ----------
     st.subheader("➕ Añadir analítica manual")
