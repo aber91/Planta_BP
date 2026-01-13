@@ -38,6 +38,17 @@ if os.path.exists(ENVIO_FILE):
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
+# ================= UTILIDADES =================
+def ultima_analitica_por_dia(df_in):
+    """
+    Devuelve SOLO la última analítica de cada día
+    """
+    return (
+        df_in.sort_values("datetime")
+        .groupby("dia", as_index=False)
+        .tail(1)
+    )
+
 # ================= PESTAÑAS =================
 tab_dashboard, tab_gestion = st.tabs(
     ["📊 Dashboard", "🛠️ Gestión de datos"]
@@ -53,19 +64,23 @@ with tab_dashboard:
     if df.empty or df_envio.empty:
         st.info("No hay datos suficientes para calcular promedios")
     else:
-        dias_envio = df_envio[df_envio["envio_emisario"] == True]["dia"]
+        dias_envio = df_envio[df_envio["envio_emisario"]]["dia"]
 
-        df_prom = df[
+        df_salida = df[
             (df["punto"] == "Salida FCA") &
             (df["dia"].isin(dias_envio))
-        ].dropna(subset=["HC", "DQO"])
+        ]
 
-        if df_prom.empty:
-            st.info("No hay días marcados como Envío a emisario")
+        df_salida_ultima = ultima_analitica_por_dia(df_salida)
+
+        df_salida_ultima = df_salida_ultima.dropna(subset=["HC", "DQO"])
+
+        if df_salida_ultima.empty:
+            st.info("No hay datos válidos para promedio")
         else:
             c1, c2 = st.columns(2)
-            c1.metric("HC promedio", f"{df_prom['HC'].mean():.2f} ppm")
-            c2.metric("DQO promedio", f"{df_prom['DQO'].mean():.2f} ppm")
+            c1.metric("HC promedio", f"{df_salida_ultima['HC'].mean():.2f} ppm")
+            c2.metric("DQO promedio", f"{df_salida_ultima['DQO'].mean():.2f} ppm")
 
     # ================= GRÁFICOS =================
     st.subheader("📈 Evolución de parámetros")
@@ -75,6 +90,10 @@ with tab_dashboard:
     param_sel = col2.selectbox("Parámetro", PARAMETROS)
 
     df_g = df[df["punto"] == punto_sel]
+
+    # 👉 Para Salida FCA solo última analítica diaria
+    if punto_sel == "Salida FCA":
+        df_g = ultima_analitica_por_dia(df_g)
 
     if not df_g.empty:
         base = alt.Chart(df_g).encode(x="datetime:T")
@@ -103,7 +122,7 @@ with tab_dashboard:
             use_container_width=True
         )
 
-        # ---------- DESCARGA GRÁFICO ----------
+        # ---------- DESCARGAR GRÁFICO ----------
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(df_g["datetime"], df_g[param_sel], marker="o")
 
@@ -134,17 +153,10 @@ with tab_dashboard:
 # =====================================================================
 with tab_gestion:
 
-    # ---------------- ENVÍO A EMISARIO ----------------
     st.subheader("📅 Envío a emisario (por día)")
 
-    if df.empty:
-        st.info("No hay datos analíticos cargados")
-    else:
-        dias = (
-            df[["dia"]]
-            .drop_duplicates()
-            .sort_values("dia")
-        )
+    if not df.empty:
+        dias = df[["dia"]].drop_duplicates().sort_values("dia")
 
         tabla_envio = dias.merge(
             df_envio,
@@ -158,8 +170,8 @@ with tab_gestion:
                 "dia": st.column_config.DateColumn("Día"),
                 "envio_emisario": st.column_config.CheckboxColumn("Envío a emisario")
             },
-            use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            use_container_width=True
         )
 
         if st.button("💾 Guardar envío a emisario"):
@@ -167,7 +179,6 @@ with tab_gestion:
             df_envio.to_csv(ENVIO_FILE, index=False)
             st.success("Decisiones guardadas")
 
-    # ---------------- DATOS ANALÍTICOS ----------------
     st.subheader("📊 Datos analíticos")
 
     if not df.empty:
@@ -183,4 +194,3 @@ with tab_gestion:
             df["dia"] = df["datetime"].dt.date
             df.to_csv(DATA_FILE, index=False)
             st.success("Datos guardados")
-
