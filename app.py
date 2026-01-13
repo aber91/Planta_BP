@@ -16,7 +16,14 @@ from io import BytesIO
 # =====================================================
 # CONFIGURACIÓN GENERAL
 # =====================================================
-PERSISTENT_DIR = "/mount/data"
+# =====================================================
+# DIRECTORIO PERSISTENTE (Cloud o Local)
+# =====================================================
+if os.path.exists("/mount/data") and os.access("/mount/data", os.W_OK):
+    PERSISTENT_DIR = "/mount/data"          # Streamlit Cloud
+else:
+    PERSISTENT_DIR = "data"                 # Local / fallback
+
 os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
 DB_PATH = f"{PERSISTENT_DIR}/planta.db"
