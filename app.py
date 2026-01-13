@@ -96,7 +96,9 @@ def analitica_valida_salida_fca(df_in):
                 fila = ult.copy()
                 for p in PARAMETROS:
                     vals = [ult[p], pen[p]]
-                    fila[p] = min(v for v in vals if pd.notna(v))
+                    vals_validos = [v for v in vals if pd.notna(v)]
+                    fila[p] = min(vals_validos) if vals_validos else None
+
                 res.append(fila)
             else:
                 res.append(ult)
