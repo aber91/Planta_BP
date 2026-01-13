@@ -5,8 +5,9 @@ import os
 import altair as alt
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+import numpy as np
 
-# ================= CONFIG =================
+# ================= CONFIGURACIÓN =================
 DATA_FILE = "datos_analiticas.csv"
 DATA_DIR = "data"
 REPORT_DIR = "reports/informes_pdf"
@@ -21,10 +22,10 @@ LIMITES = {
     "DQO": {"puntual": 700, "anual": 125}
 }
 
-st.set_page_config("Control Analíticas Planta", layout="wide")
+st.set_page_config(page_title="Control Analíticas Planta", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
-# ================= CARGA =================
+# ================= CARGA DE DATOS =================
 if os.path.exists(DATA_FILE):
     df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
 else:
@@ -32,7 +33,7 @@ else:
         "datetime", "punto", "HC", "SS", "DQO", "Sulf", "envio_emisario"
     ])
 
-# ================= IMPORTACIÓN XLS =================
+# ================= IMPORTACIÓN EXCEL =================
 st.subheader("📥 Importar datos desde Excel")
 
 if st.button("Importar archivos desde /data"):
@@ -46,7 +47,6 @@ if st.button("Importar archivos desde /data"):
 
     for archivo, punto in archivos.items():
         ruta = os.path.join(DATA_DIR, archivo)
-
         if not os.path.exists(ruta):
             continue
 
@@ -136,6 +136,60 @@ if not df.empty:
         df.to_csv(DATA_FILE, index=False)
         st.success("Cambios guardados")
 
+# ================= TABLA DIARIA AGRUPADA =================
+st.subheader("📊 Resumen diario de analíticas")
+
+if not df.empty:
+    df["dia"] = df["datetime"].dt.date
+
+    df_daily = (
+        df.groupby(["dia", "punto"], as_index=False)
+        .agg({
+            "HC": "mean",
+            "SS": "mean",
+            "DQO": "mean",
+            "Sulf": "mean"
+        })
+    )
+
+    tabla = df_daily.pivot(
+        index="dia",
+        columns="punto",
+        values=["HC", "SS", "DQO", "Sulf"]
+    )
+
+    tabla.columns = [
+        f"{param} – {punto}"
+        for param, punto in tabla.columns
+    ]
+
+    def color_limites(val, parametro):
+        if pd.isna(val):
+            return ""
+        lim = LIMITES.get(parametro)
+        if not lim:
+            return ""
+        if val > lim["puntual"]:
+            return "background-color:#ff4d4d;color:white"
+        if val > lim["anual"]:
+            return "background-color:#ffcc80"
+        return ""
+
+    styled = tabla.style
+
+    for col in tabla.columns:
+        param = col.split(" – ")[0]
+        if param in LIMITES:
+            styled = styled.applymap(
+                lambda v, p=param: color_limites(v, p),
+                subset=[col]
+            )
+
+    st.dataframe(
+        styled,
+        use_container_width=True
+    )
+
 # ================= GRÁFICOS =================
 st.subheader("📈 Gráficos")
 
@@ -164,7 +218,10 @@ if not df.empty:
             .encode(y="y:Q")
         )
 
-    st.altair_chart(alt.layer(*capas).properties(height=420), use_container_width=True)
+    st.altair_chart(
+        alt.layer(*capas).properties(height=420),
+        use_container_width=True
+    )
 
 # ================= PROMEDIOS =================
 st.subheader("📐 Promedios acumulados (Salida FCA + Envío a emisario)")
@@ -172,9 +229,7 @@ st.subheader("📐 Promedios acumulados (Salida FCA + Envío a emisario)")
 df_p = df[
     (df["punto"] == "Salida FCA") &
     (df["envio_emisario"] == True)
-]
-
-df_p = df_p.dropna(subset=["HC", "DQO"])
+].dropna(subset=["HC", "DQO"])
 
 if df_p.empty:
     st.info("No hay datos válidos para promedio")
@@ -210,3 +265,5 @@ if not df.empty:
         c.drawText(t)
         c.save()
         st.success(f"PDF generado: {ruta}")
+
+st.caption("Aplicación Streamlit – Control de analíticas de planta")
