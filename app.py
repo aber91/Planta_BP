@@ -146,7 +146,13 @@ with tab_dashboard:
 
         # ---------- DESCARGAR GRÁFICO ----------
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.plot(df_g["datetime"], df_g[param_sel], marker="o")
+        df_plot = df_g.dropna(subset=[param_sel]).copy()
+        ax.plot(
+            df_plot["datetime"],
+            df_plot[param_sel].astype(float),
+            marker="o"
+        )
+
 
         if param_sel in LIMITES:
             ax.axhline(LIMITES[param_sel]["puntual"], color="red")
