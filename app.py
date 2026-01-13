@@ -9,6 +9,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 # ================= CONFIG =================
 DATA_FILE = "datos_analiticas.csv"
+ENVIO_FILE = "envio_emisario.csv"
 DATA_DIR = "data"
 
 PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
@@ -22,36 +23,90 @@ LIMITES = {
 st.set_page_config("Control Analíticas Planta", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
-# ================= CARGA =================
+# ================= CARGA DATOS =================
 if os.path.exists(DATA_FILE):
     df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
 else:
-    df = pd.DataFrame(columns=[
-        "datetime", "punto", "HC", "SS", "DQO", "Sulf", "envio_emisario"
-    ])
+    df = pd.DataFrame(columns=["datetime", "punto", "HC", "SS", "DQO", "Sulf"])
+
+if os.path.exists(ENVIO_FILE):
+    df_envio = pd.read_csv(ENVIO_FILE, parse_dates=["dia"])
+else:
+    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
+
+# Añadimos columna día a analíticas
+if not df.empty:
+    df["dia"] = df["datetime"].dt.date
 
 # ================= PESTAÑAS =================
-tab_dashboard, tab_gestion = st.tabs(["📊 Dashboard", "🛠️ Gestión de datos"])
+tab_dashboard, tab_envio, tab_gestion = st.tabs(
+    ["📊 Dashboard", "📅 Envío a emisario", "🛠️ Gestión de datos"]
+)
+
+# =====================================================================
+# 📅 TABLA ENVÍO A EMISARIO (POR DÍA)
+# =====================================================================
+with tab_envio:
+    st.subheader("📅 Envío a emisario (decisión diaria)")
+
+    if df.empty:
+        st.info("No hay días con datos analíticos")
+    else:
+        dias = (
+            df[["dia"]]
+            .drop_duplicates()
+            .sort_values("dia")
+        )
+
+        tabla_envio = dias.merge(
+            df_envio,
+            on="dia",
+            how="left"
+        ).fillna({"envio_emisario": False})
+
+        tabla_edit = st.data_editor(
+            tabla_envio,
+            column_config={
+                "dia": st.column_config.DateColumn("Día"),
+                "envio_emisario": st.column_config.CheckboxColumn(
+                    "Envío a emisario"
+                )
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+
+        if st.button("💾 Guardar decisión diaria"):
+            df_envio = tabla_edit.copy()
+            df_envio.to_csv(ENVIO_FILE, index=False)
+            st.success("Decisiones de envío guardadas")
 
 # =====================================================================
 # 📊 DASHBOARD
 # =====================================================================
 with tab_dashboard:
 
-    # ================= PROMEDIOS =================
-    st.subheader("📐 Promedios acumulados (Salida FCA + Envío a emisario)")
+    st.subheader("📐 Promedios acumulados (Salida FCA)")
 
-    df_p = df[
-        (df["punto"] == "Salida FCA") &
-        (df["envio_emisario"] == True)
-    ].dropna(subset=["HC", "DQO"])
-
-    if df_p.empty:
-        st.info("No hay datos válidos para promedios")
+    if df.empty or df_envio.empty:
+        st.info("No hay datos suficientes para calcular promedios")
     else:
-        c1, c2 = st.columns(2)
-        c1.metric("HC promedio", f"{df_p['HC'].mean():.2f} ppm")
-        c2.metric("DQO promedio", f"{df_p['DQO'].mean():.2f} ppm")
+        # Días marcados como envío
+        dias_envio = df_envio[
+            df_envio["envio_emisario"] == True
+        ]["dia"]
+
+        df_prom = df[
+            (df["punto"] == "Salida FCA") &
+            (df["dia"].isin(dias_envio))
+        ].dropna(subset=["HC", "DQO"])
+
+        if df_prom.empty:
+            st.info("No hay días marcados para envío a emisario")
+        else:
+            c1, c2 = st.columns(2)
+            c1.metric("HC promedio", f"{df_prom['HC'].mean():.2f} ppm")
+            c2.metric("DQO promedio", f"{df_prom['DQO'].mean():.2f} ppm")
 
     # ================= GRÁFICOS =================
     st.subheader("📈 Evolución de parámetros")
@@ -87,7 +142,7 @@ with tab_dashboard:
         chart = alt.layer(*capas).properties(height=420)
         st.altair_chart(chart, use_container_width=True)
 
-        # ---------- DESCARGA IMAGEN ----------
+        # -------- DESCARGAR GRÁFICO --------
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(df_g["datetime"], df_g[param_sel], marker="o")
 
@@ -96,68 +151,61 @@ with tab_dashboard:
             ax.axhline(LIMITES[param_sel]["anual"], color="orange", linestyle="--")
 
         ax.set_title(f"{param_sel} – {punto_sel}")
-        ax.set_ylabel("ppm")
         ax.grid(True)
 
-        img_buffer = BytesIO()
+        img = BytesIO()
         plt.tight_layout()
-        plt.savefig(img_buffer, format="png")
+        plt.savefig(img, format="png")
         plt.close(fig)
-        img_buffer.seek(0)
+        img.seek(0)
 
         c1, c2 = st.columns(2)
 
-        with c1:
+        c1.download_button(
+            "⬇️ Descargar gráfico",
+            data=img,
+            file_name=f"{param_sel}_{punto_sel}.png",
+            mime="image/png"
+        )
+
+        # -------- INFORME PDF --------
+        if c2.button("📄 Generar informe"):
+            buffer = BytesIO()
+
+            with PdfPages(buffer) as pdf:
+                for parametro in ["HC", "DQO"]:
+                    fig, ax = plt.subplots(figsize=(10, 5))
+
+                    for p in PUNTOS:
+                        serie = (
+                            df[df["punto"] == p]
+                            .groupby("dia")[parametro]
+                            .mean()
+                        )
+                        ax.plot(serie.index, serie.values, marker="o", label=p)
+
+                    lim = LIMITES[parametro]
+                    ax.axhline(lim["puntual"], color="red", label="Límite puntual")
+                    ax.axhline(lim["anual"], color="orange", linestyle="--", label="Límite anual")
+
+                    ax.set_title(f"{parametro} – Evolución diaria")
+                    ax.legend()
+                    ax.grid(True)
+
+                    pdf.savefig(fig)
+                    plt.close(fig)
+
+            buffer.seek(0)
+
             st.download_button(
-                "⬇️ Descargar gráfico",
-                data=img_buffer,
-                file_name=f"{param_sel}_{punto_sel}.png",
-                mime="image/png"
+                "⬇️ Descargar informe PDF",
+                data=buffer,
+                file_name="informe_visual_analiticas.pdf",
+                mime="application/pdf"
             )
 
-        # ---------- INFORME PDF ----------
-        with c2:
-            if st.button("📄 Generar informe"):
-                pdf_buffer = BytesIO()
-
-                with PdfPages(pdf_buffer) as pdf:
-                    df["dia"] = df["datetime"].dt.date
-
-                    for parametro in ["HC", "DQO"]:
-                        fig, ax = plt.subplots(figsize=(10, 5))
-
-                        for p in PUNTOS:
-                            serie = (
-                                df[df["punto"] == p]
-                                .groupby("dia")[parametro]
-                                .mean()
-                            )
-                            ax.plot(serie.index, serie.values, marker="o", label=p)
-
-                        lim = LIMITES[parametro]
-                        ax.axhline(lim["puntual"], color="red", label="Límite puntual")
-                        ax.axhline(lim["anual"], color="orange", linestyle="--", label="Límite anual")
-
-                        ax.set_title(f"{parametro} – Evolución")
-                        ax.set_ylabel("ppm")
-                        ax.legend()
-                        ax.grid(True)
-
-                        plt.tight_layout()
-                        pdf.savefig(fig)
-                        plt.close(fig)
-
-                pdf_buffer.seek(0)
-
-                st.download_button(
-                    "⬇️ Descargar informe PDF",
-                    data=pdf_buffer,
-                    file_name="informe_visual_analiticas.pdf",
-                    mime="application/pdf"
-                )
-
 # =====================================================================
-# 🛠️ GESTIÓN DE DATOS (OCULTO POR DEFECTO)
+# 🛠️ GESTIÓN DE DATOS
 # =====================================================================
 with tab_gestion:
 
@@ -186,9 +234,6 @@ with tab_gestion:
             )
 
             for _, r in xls.iterrows():
-                if pd.isna(r["HC"]) and pd.isna(r["DQO"]):
-                    continue
-
                 try:
                     dt = datetime.combine(
                         pd.to_datetime(r["Fecha"]).date(),
@@ -203,25 +248,10 @@ with tab_gestion:
                     "HC": r["HC"],
                     "SS": r["SS"],
                     "DQO": r["DQO"],
-                    "Sulf": r["Sulf"],
-                    "envio_emisario": False
+                    "Sulf": r["Sulf"]
                 })
 
         if nuevos:
             df = pd.concat([df, pd.DataFrame(nuevos)], ignore_index=True)
             df.to_csv(DATA_FILE, index=False)
             st.success(f"Importados {len(nuevos)} registros")
-
-    st.subheader("✏️ Editar / eliminar registros")
-
-    df_edit = st.data_editor(
-        df.sort_values("datetime", ascending=False),
-        num_rows="dynamic",
-        use_container_width=True
-    )
-
-    if st.button("💾 Guardar cambios"):
-        df = df_edit.copy()
-        df.to_csv(DATA_FILE, index=False)
-        st.success("Cambios guardados")
-
