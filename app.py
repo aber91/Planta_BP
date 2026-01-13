@@ -3,11 +3,19 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
 
 # ---------------- DATA ----------------
+# ---------------- DATA ----------------
 if os.path.exists(DATA_FILE):
-df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
+    df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
 else:
-df = pd.DataFrame(columns=["datetime", "punto", "HC", "SS", "DQO", "PH", "envio_emisario"])
-
+    df = pd.DataFrame(columns=[
+        "datetime",
+        "punto",
+        "HC",
+        "SS",
+        "DQO",
+        "PH",
+        "envio_emisario"
+    ])
 
 # ---------------- INPUT ----------------
 st.subheader("📝 Introducción manual de datos")
