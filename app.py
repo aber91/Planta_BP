@@ -33,52 +33,59 @@ else:
     ])
 
 # ================= IMPORTACIÓN XLS =================
-st.subheader("📥 Importar datos desde XLS")
+st.subheader("📥 Importar datos desde Excel")
 
 if st.button("Importar archivos desde /data"):
     archivos = {
-        "entrada_planta.xls": "Entrada Planta",
-        "x507.xls": "X-507",
-        "salidafca.xls": "Salida FCA"
+        "entrada_planta.xlsx": "Entrada Planta",
+        "x507.xlsx": "X-507",
+        "salidafca.xlsx": "Salida FCA"
     }
 
     nuevos = []
 
     for archivo, punto in archivos.items():
         ruta = os.path.join(DATA_DIR, archivo)
-        if os.path.exists(ruta):
-            xls = pd.read_excel(
-                ruta,
-                usecols="C:H",
-                names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
-                skiprows=1
-            )
 
-            for _, r in xls.iterrows():
-                if pd.isna(r["HC"]) and pd.isna(r["DQO"]):
-                    continue
+        if not os.path.exists(ruta):
+            continue
 
+        xls = pd.read_excel(
+            ruta,
+            engine="openpyxl",
+            usecols="C:H",
+            names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+            header=None
+        )
+
+        for _, r in xls.iterrows():
+            if pd.isna(r["HC"]) and pd.isna(r["DQO"]):
+                continue
+
+            try:
                 dt = datetime.combine(
                     pd.to_datetime(r["Fecha"]).date(),
                     pd.to_datetime(r["Hora"]).time()
                 )
+            except Exception:
+                continue
 
-                nuevos.append({
-                    "datetime": dt,
-                    "punto": punto,
-                    "HC": r["HC"],
-                    "SS": r["SS"],
-                    "DQO": r["DQO"],
-                    "Sulf": r["Sulf"],
-                    "envio_emisario": False
-                })
+            nuevos.append({
+                "datetime": dt,
+                "punto": punto,
+                "HC": r["HC"],
+                "SS": r["SS"],
+                "DQO": r["DQO"],
+                "Sulf": r["Sulf"],
+                "envio_emisario": False
+            })
 
     if nuevos:
         df = pd.concat([df, pd.DataFrame(nuevos)], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
         st.success(f"Importados {len(nuevos)} registros")
     else:
-        st.info("No se importaron datos nuevos")
+        st.info("No se importaron datos")
 
 # ================= ENTRADA MANUAL =================
 st.subheader("📝 Introducción manual")
