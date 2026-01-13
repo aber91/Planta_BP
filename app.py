@@ -140,6 +140,41 @@ with tab_estado:
         c4.metric("Sulf", fila["Sulf"])
         st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
 
+    st.divider()
+    st.subheader("📅 Estado diario del mes (Salida FCA)")
+    
+    if df.empty:
+        st.info("No hay datos")
+    else:
+        # Filtrar Salida FCA
+        df_salida = df[df["punto"] == "Salida FCA"]
+    
+        # Obtener analítica válida por día
+        df_valida = analitica_valida_salida_fca(df_salida)
+    
+        if df_valida.empty:
+            st.info("No hay analíticas válidas")
+        else:
+            # Filtrar mes actual
+            mes_actual = date.today().replace(day=1)
+            df_mes = df_valida[df_valida["dia"] >= mes_actual]
+    
+            tabla_estado = pd.DataFrame({
+                "Día": df_mes["dia"],
+                "HC": df_mes["HC"],
+                "DQO": df_mes["DQO"],
+            })
+    
+            tabla_estado["Estado"] = tabla_estado.apply(
+                lambda r: estado_global(r["HC"], r["DQO"]),
+                axis=1
+            )
+    
+            st.dataframe(
+                tabla_estado.sort_values("Día", ascending=False),
+                use_container_width=True
+            )
+    
 # =====================================================
 # DASHBOARD
 # =====================================================
