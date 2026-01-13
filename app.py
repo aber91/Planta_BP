@@ -353,21 +353,29 @@ with tab_gestion:
             st.rerun()
         
     # ---------- AÑADIR MANUAL ----------
-    st.subheader("➕ Añadir analítica manual")
-
-    with st.form("add_manual"):
-        fecha = st.date_input("Fecha")
-        hora = st.time_input("Hora")
-        punto = st.selectbox("Punto", PUNTOS)
-        hc = st.number_input("HC", value=0.0)
-        ss = st.number_input("SS", value=0.0)
-        dqo = st.number_input("DQO", value=0.0)
-        sulf = st.number_input("Sulf", value=0.0)
-
-        if st.form_submit_button("Guardar"):
+        st.divider()
+    
+        with st.expander("➕ Añadir analítica manual", expanded=False):
+    
+        c1, c2, c3 = st.columns(3)
+    
+        with c1:
+            fecha = st.date_input("Fecha")
+            hora = st.time_input("Hora")
+            punto = st.selectbox("Punto", PUNTOS)
+    
+        with c2:
+            hc = st.number_input("HC", value=0.0)
+            ss = st.number_input("SS", value=0.0)
+    
+        with c3:
+            dqo = st.number_input("DQO", value=0.0)
+            sulf = st.number_input("Sulf", value=0.0)
+    
+        if st.button("💾 Guardar analítica"):
             dt = datetime.combine(fecha, hora)
             dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-
+    
             conn.execute(
                 """
                 INSERT OR IGNORE INTO analiticas
@@ -377,9 +385,10 @@ with tab_gestion:
                 (dt_str, punto, hc, ss, dqo, sulf)
             )
             conn.commit()
+    
             st.success("Analítica guardada")
+            st.experimental_rerun()
 
-    st.divider()
 
     # ---------- ENVÍO A EMISARIO ----------
     st.subheader("📅 Envío a emisario (por día)")
