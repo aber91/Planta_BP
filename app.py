@@ -353,7 +353,7 @@ with tab_gestion:
             st.rerun()
         
     # ---------- AÑADIR MANUAL ----------
-        st.divider()
+    st.divider()
     
         with st.expander("➕ Añadir analítica manual", expanded=False):
     
