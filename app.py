@@ -15,13 +15,16 @@ import altair as alt
 # =====================================================
 # CONFIGURACIÓN GENERAL
 # =====================================================
-# Directorio persistente (Cloud o local)
-if os.path.exists("/mount/data") and os.access("/mount/data", os.W_OK):
+# =====================================================
+# DIRECTORIO PERSISTENTE (FORZADO EN STREAMLIT CLOUD)
+# =====================================================
+if os.getenv("STREAMLIT_CLOUD"):
     PERSISTENT_DIR = "/mount/data"
 else:
     PERSISTENT_DIR = "data"
 
 os.makedirs(PERSISTENT_DIR, exist_ok=True)
+
 
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 
