@@ -144,6 +144,41 @@ with tab_estado:
 # DASHBOARD
 # =====================================================
 with tab_dashboard:
+st.subheader("📐 Promedio mensual – Salida FCA (con envío a emisario)")
+
+if df.empty or df_envio.empty:
+    st.info("No hay datos suficientes para promedio")
+else:
+    # Días con envío a emisario
+    dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
+
+    # Salida FCA
+    df_salida = df[df["punto"] == "Salida FCA"]
+
+    # Analítica válida por día
+    df_valida = analitica_valida_salida_fca(df_salida)
+
+    # Filtrar solo días con envío
+    df_env = df_valida[df_valida["dia"].isin(dias_envio)]
+
+    # Filtrar mes actual
+    mes_actual = date.today().replace(day=1)
+    df_env_mes = df_env[df_env["dia"] >= mes_actual]
+
+    if df_env_mes.empty:
+        st.info("No hay días válidos este mes")
+    else:
+        c1, c2 = st.columns(2)
+
+        c1.metric(
+            "HC promedio mensual",
+            f"{df_env_mes['HC'].mean():.2f} ppm"
+        )
+        c2.metric(
+            "DQO promedio mensual",
+            f"{df_env_mes['DQO'].mean():.2f} ppm"
+        )
+
     col1, col2 = st.columns(2)
     punto_sel = col1.selectbox("Punto", PUNTOS, key="dash_punto")
     param_sel = col2.selectbox("Parámetro", PARAMETROS, key="dash_param")
