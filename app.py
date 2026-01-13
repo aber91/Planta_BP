@@ -313,7 +313,7 @@ with tab_gestion:
                     WHERE datetime = ? AND punto = ?
                     LIMIT 1
                     """,
-                    (dt.isoformat(), punto)
+                    (dt.strftime("%Y-%m-%d %H:%M:%S"), punto)
                 ).fetchone()
 
                 if existe:
