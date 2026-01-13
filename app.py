@@ -29,57 +29,19 @@ if os.path.exists(DATA_FILE):
 else:
     df = pd.DataFrame(columns=["datetime", "punto", "HC", "SS", "DQO", "Sulf"])
 
-if os.path.exists(ENVIO_FILE):
-    df_envio = pd.read_csv(ENVIO_FILE, parse_dates=["dia"])
-else:
-    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
-
-# Añadimos columna día a analíticas
 if not df.empty:
     df["dia"] = df["datetime"].dt.date
 
+if os.path.exists(ENVIO_FILE):
+    df_envio = pd.read_csv(ENVIO_FILE)
+    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+else:
+    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
+
 # ================= PESTAÑAS =================
-tab_dashboard, tab_envio, tab_gestion = st.tabs(
-    ["📊 Dashboard", "📅 Envío a emisario", "🛠️ Gestión de datos"]
+tab_dashboard, tab_gestion = st.tabs(
+    ["📊 Dashboard", "🛠️ Gestión de datos"]
 )
-
-# =====================================================================
-# 📅 TABLA ENVÍO A EMISARIO (POR DÍA)
-# =====================================================================
-with tab_envio:
-    st.subheader("📅 Envío a emisario (decisión diaria)")
-
-    if df.empty:
-        st.info("No hay días con datos analíticos")
-    else:
-        dias = (
-            df[["dia"]]
-            .drop_duplicates()
-            .sort_values("dia")
-        )
-
-        tabla_envio = dias.merge(
-            df_envio,
-            on="dia",
-            how="left"
-        ).fillna({"envio_emisario": False})
-
-        tabla_edit = st.data_editor(
-            tabla_envio,
-            column_config={
-                "dia": st.column_config.DateColumn("Día"),
-                "envio_emisario": st.column_config.CheckboxColumn(
-                    "Envío a emisario"
-                )
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-
-        if st.button("💾 Guardar decisión diaria"):
-            df_envio = tabla_edit.copy()
-            df_envio.to_csv(ENVIO_FILE, index=False)
-            st.success("Decisiones de envío guardadas")
 
 # =====================================================================
 # 📊 DASHBOARD
@@ -91,10 +53,7 @@ with tab_dashboard:
     if df.empty or df_envio.empty:
         st.info("No hay datos suficientes para calcular promedios")
     else:
-        # Días marcados como envío
-        dias_envio = df_envio[
-            df_envio["envio_emisario"] == True
-        ]["dia"]
+        dias_envio = df_envio[df_envio["envio_emisario"] == True]["dia"]
 
         df_prom = df[
             (df["punto"] == "Salida FCA") &
@@ -102,7 +61,7 @@ with tab_dashboard:
         ].dropna(subset=["HC", "DQO"])
 
         if df_prom.empty:
-            st.info("No hay días marcados para envío a emisario")
+            st.info("No hay días marcados como Envío a emisario")
         else:
             c1, c2 = st.columns(2)
             c1.metric("HC promedio", f"{df_prom['HC'].mean():.2f} ppm")
@@ -139,10 +98,12 @@ with tab_dashboard:
                 .encode(y="y:Q")
             )
 
-        chart = alt.layer(*capas).properties(height=420)
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(
+            alt.layer(*capas).properties(height=420),
+            use_container_width=True
+        )
 
-        # -------- DESCARGAR GRÁFICO --------
+        # ---------- DESCARGA GRÁFICO ----------
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(df_g["datetime"], df_g[param_sel], marker="o")
 
@@ -168,90 +129,58 @@ with tab_dashboard:
             mime="image/png"
         )
 
-        # -------- INFORME PDF --------
-        if c2.button("📄 Generar informe"):
-            buffer = BytesIO()
-
-            with PdfPages(buffer) as pdf:
-                for parametro in ["HC", "DQO"]:
-                    fig, ax = plt.subplots(figsize=(10, 5))
-
-                    for p in PUNTOS:
-                        serie = (
-                            df[df["punto"] == p]
-                            .groupby("dia")[parametro]
-                            .mean()
-                        )
-                        ax.plot(serie.index, serie.values, marker="o", label=p)
-
-                    lim = LIMITES[parametro]
-                    ax.axhline(lim["puntual"], color="red", label="Límite puntual")
-                    ax.axhline(lim["anual"], color="orange", linestyle="--", label="Límite anual")
-
-                    ax.set_title(f"{parametro} – Evolución diaria")
-                    ax.legend()
-                    ax.grid(True)
-
-                    pdf.savefig(fig)
-                    plt.close(fig)
-
-            buffer.seek(0)
-
-            st.download_button(
-                "⬇️ Descargar informe PDF",
-                data=buffer,
-                file_name="informe_visual_analiticas.pdf",
-                mime="application/pdf"
-            )
-
 # =====================================================================
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================================
 with tab_gestion:
 
-    st.subheader("📥 Importar datos desde Excel")
+    # ---------------- ENVÍO A EMISARIO ----------------
+    st.subheader("📅 Envío a emisario (por día)")
 
-    if st.button("Importar desde /data"):
-        archivos = {
-            "entrada_planta.xlsx": "Entrada Planta",
-            "x507.xlsx": "X-507",
-            "salidafca.xlsx": "Salida FCA"
-        }
+    if df.empty:
+        st.info("No hay datos analíticos cargados")
+    else:
+        dias = (
+            df[["dia"]]
+            .drop_duplicates()
+            .sort_values("dia")
+        )
 
-        nuevos = []
+        tabla_envio = dias.merge(
+            df_envio,
+            on="dia",
+            how="left"
+        ).fillna({"envio_emisario": False})
 
-        for archivo, punto in archivos.items():
-            ruta = os.path.join(DATA_DIR, archivo)
-            if not os.path.exists(ruta):
-                continue
+        tabla_edit = st.data_editor(
+            tabla_envio,
+            column_config={
+                "dia": st.column_config.DateColumn("Día"),
+                "envio_emisario": st.column_config.CheckboxColumn("Envío a emisario")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
 
-            xls = pd.read_excel(
-                ruta,
-                engine="openpyxl",
-                usecols="C:H",
-                names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
-                header=None
-            )
+        if st.button("💾 Guardar envío a emisario"):
+            df_envio = tabla_edit.copy()
+            df_envio.to_csv(ENVIO_FILE, index=False)
+            st.success("Decisiones guardadas")
 
-            for _, r in xls.iterrows():
-                try:
-                    dt = datetime.combine(
-                        pd.to_datetime(r["Fecha"]).date(),
-                        pd.to_datetime(r["Hora"]).time()
-                    )
-                except Exception:
-                    continue
+    # ---------------- DATOS ANALÍTICOS ----------------
+    st.subheader("📊 Datos analíticos")
 
-                nuevos.append({
-                    "datetime": dt,
-                    "punto": punto,
-                    "HC": r["HC"],
-                    "SS": r["SS"],
-                    "DQO": r["DQO"],
-                    "Sulf": r["Sulf"]
-                })
+    if not df.empty:
+        df_edit = st.data_editor(
+            df.drop(columns=["dia"]).sort_values("datetime", ascending=False),
+            num_rows="dynamic",
+            use_container_width=True
+        )
 
-        if nuevos:
-            df = pd.concat([df, pd.DataFrame(nuevos)], ignore_index=True)
+        if st.button("💾 Guardar cambios en datos"):
+            df = df_edit.copy()
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df["dia"] = df["datetime"].dt.date
             df.to_csv(DATA_FILE, index=False)
-            st.success(f"Importados {len(nuevos)} registros")
+            st.success("Datos guardados")
+
