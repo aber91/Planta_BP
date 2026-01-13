@@ -39,15 +39,36 @@ else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
 # ================= UTILIDADES =================
-def ultima_analitica_por_dia(df_in):
+def analitica_valida_por_dia_salida_fca(df_in):
     """
-    Devuelve SOLO la última analítica de cada día
+    Devuelve la analítica válida por día para Salida FCA:
+    - Si las dos últimas están separadas <= 1 minuto,
+      se toma el MEJOR valor (mínimo) por parámetro
+    - Si no, se toma la última analítica
     """
-    return (
-        df_in.sort_values("datetime")
-        .groupby("dia", as_index=False)
-        .tail(1)
-    )
+    resultados = []
+
+    for dia, grupo in df_in.sort_values("datetime").groupby("dia"):
+        if len(grupo) == 1:
+            resultados.append(grupo.iloc[-1])
+            continue
+
+        ult = grupo.iloc[-1]
+        penult = grupo.iloc[-2]
+
+        diff_min = (ult["datetime"] - penult["datetime"]).total_seconds() / 60
+
+        if diff_min <= 1:
+            fila = ult.copy()
+            for p in ["HC", "SS", "DQO", "Sulf"]:
+                fila[p] = min(
+                    v for v in [ult[p], penult[p]] if pd.notna(v)
+                )
+            resultados.append(fila)
+        else:
+            resultados.append(ult)
+
+    return pd.DataFrame(resultados)
 
 # ================= PESTAÑAS =================
 tab_dashboard, tab_gestion = st.tabs(
@@ -71,8 +92,7 @@ with tab_dashboard:
             (df["dia"].isin(dias_envio))
         ]
 
-        df_salida_ultima = ultima_analitica_por_dia(df_salida)
-
+        df_salida_ultima = analitica_valida_por_dia_salida_fca(df_salida)
         df_salida_ultima = df_salida_ultima.dropna(subset=["HC", "DQO"])
 
         if df_salida_ultima.empty:
@@ -93,7 +113,7 @@ with tab_dashboard:
 
     # 👉 Para Salida FCA solo última analítica diaria
     if punto_sel == "Salida FCA":
-        df_g = ultima_analitica_por_dia(df_g)
+        df_g = analitica_valida_por_dia_salida_fca(df_g)
 
     if not df_g.empty:
         base = alt.Chart(df_g).encode(x="datetime:T")
