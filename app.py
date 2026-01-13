@@ -241,29 +241,41 @@ else:
 # ================= PDF =================
 st.subheader("📄 Informe mensual PDF")
 
+from io import BytesIO
+
 if not df.empty:
     mes = st.selectbox(
         "Mes",
         sorted(df["datetime"].dt.to_period("M").astype(str).unique())
     )
 
-    if st.button("Generar PDF"):
-        ruta = f"{REPORT_DIR}/informe_{mes}.pdf"
-        c = canvas.Canvas(ruta, pagesize=A4)
+    if st.button("📥 Generar y descargar PDF"):
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
         t = c.beginText(40, 800)
 
-        t.textLine(f"Informe mensual – {mes}")
+        t.textLine(f"Informe mensual de analíticas – {mes}")
         t.textLine("")
+        t.textLine("Fecha | Punto | HC | SS | DQO | Sulf | Envío emisario")
+        t.textLine("-" * 95)
 
-        for _, r in df[df["datetime"].dt.to_period("M").astype(str) == mes].iterrows():
+        df_mes = df[df["datetime"].dt.to_period("M").astype(str) == mes]
+
+        for _, r in df_mes.iterrows():
             t.textLine(
-                f"{r['datetime']} | {r['punto']} | HC {r['HC']} | "
-                f"SS {r['SS']} | DQO {r['DQO']} | Sulf {r['Sulf']} | "
+                f"{r['datetime']} | {r['punto']} | "
+                f"{r['HC']} | {r['SS']} | {r['DQO']} | {r['Sulf']} | "
                 f"{'Sí' if r['envio_emisario'] else 'No'}"
             )
 
         c.drawText(t)
         c.save()
-        st.success(f"PDF generado: {ruta}")
 
-st.caption("Aplicación Streamlit – Control de analíticas de planta")
+        buffer.seek(0)
+
+        st.download_button(
+            label="⬇️ Descargar informe PDF",
+            data=buffer,
+            file_name=f"informe_analiticas_{mes}.pdf",
+            mime="application/pdf"
+        )
