@@ -45,6 +45,7 @@ def analitica_valida_por_dia_salida_fca(df_in):
     - Si las dos últimas están separadas <= 1 minuto,
       se toma el MEJOR valor (mínimo) por parámetro
     - Si no, se toma la última analítica
+    - Si ambos valores son NaN → se mantiene NaN
     """
     resultados = []
 
@@ -61,9 +62,10 @@ def analitica_valida_por_dia_salida_fca(df_in):
         if diff_min <= 1:
             fila = ult.copy()
             for p in ["HC", "SS", "DQO", "Sulf"]:
-                fila[p] = min(
+                valores = [
                     v for v in [ult[p], penult[p]] if pd.notna(v)
-                )
+                ]
+                fila[p] = min(valores) if valores else pd.NA
             resultados.append(fila)
         else:
             resultados.append(ult)
