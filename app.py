@@ -357,38 +357,37 @@ with tab_gestion:
     
     with st.expander("➕ Añadir analítica manual", expanded=False):
 
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        fecha = st.date_input("Fecha")
-        hora = st.time_input("Hora")
-        punto = st.selectbox("Punto", PUNTOS)
-
-    with c2:
-        hc = st.number_input("HC", value=0.0)
-        ss = st.number_input("SS", value=0.0)
-
-    with c3:
-        dqo = st.number_input("DQO", value=0.0)
-        sulf = st.number_input("Sulf", value=0.0)
-
-    if st.button("💾 Guardar analítica"):
-        dt = datetime.combine(fecha, hora)
-        dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO analiticas
-            (datetime, punto, HC, SS, DQO, Sulf)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (dt_str, punto, hc, ss, dqo, sulf)
-        )
-        conn.commit()
-
-        st.success("Analítica guardada")
-        st.experimental_rerun()
-
+        c1, c2, c3 = st.columns(3)
+    
+        with c1:
+            fecha = st.date_input("Fecha")
+            hora = st.time_input("Hora")
+            punto = st.selectbox("Punto", PUNTOS)
+    
+        with c2:
+            hc = st.number_input("HC", value=0.0)
+            ss = st.number_input("SS", value=0.0)
+    
+        with c3:
+            dqo = st.number_input("DQO", value=0.0)
+            sulf = st.number_input("Sulf", value=0.0)
+    
+        if st.button("💾 Guardar analítica"):
+            dt = datetime.combine(fecha, hora)
+            dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO analiticas
+                (datetime, punto, HC, SS, DQO, Sulf)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (dt_str, punto, hc, ss, dqo, sulf)
+            )
+            conn.commit()
+    
+            st.success("Analítica guardada")
+            st.experimental_rerun()
 
 # ---------- ENVÍO A EMISARIO ----------
 st.subheader("📅 Envío a emisario (por día)")
