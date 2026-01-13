@@ -271,6 +271,64 @@ with tab_dashboard:
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================
 with tab_gestion:
+st.subheader("📥 Importar datos desde Excel")
+
+if st.button("Importar desde carpeta /data"):
+    archivos = {
+        "entrada_planta.xls": "Entrada Planta",
+        "x507.xls": "X-507",
+        "salidafca.xls": "Salida FCA"
+    }
+
+    insertados = 0
+
+    for archivo, punto in archivos.items():
+        ruta = os.path.join("data", archivo)
+        if not os.path.exists(ruta):
+            continue
+
+        xls = pd.read_excel(
+            ruta,
+            engine="openpyxl",
+            usecols="C:H",
+            names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+            header=None
+        )
+
+        for _, r in xls.iterrows():
+            try:
+                dt = datetime.combine(
+                    pd.to_datetime(r["Fecha"]).date(),
+                    pd.to_datetime(r["Hora"]).time()
+                )
+            except Exception:
+                continue
+
+            # Evitar duplicados exactos
+            existe = conn.execute(
+                """
+                SELECT 1 FROM analiticas
+                WHERE datetime = ? AND punto = ?
+                LIMIT 1
+                """,
+                (dt.isoformat(), punto)
+            ).fetchone()
+
+            if existe:
+                continue
+
+            conn.execute(
+                """
+                INSERT INTO analiticas
+                (datetime, punto, HC, SS, DQO, Sulf)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (dt, punto, r["HC"], r["SS"], r["DQO"], r["Sulf"])
+            )
+            insertados += 1
+
+    conn.commit()
+    st.success(f"Importadas {insertados} analíticas nuevas")
 
     # ---------- IMPORTACIÓN MANUAL ----------
     st.subheader("➕ Añadir analítica manual")
