@@ -355,62 +355,62 @@ with tab_gestion:
     # ---------- AÑADIR MANUAL ----------
     st.divider()
     
-        with st.expander("➕ Añadir analítica manual", expanded=False):
-    
-        c1, c2, c3 = st.columns(3)
-    
-        with c1:
-            fecha = st.date_input("Fecha")
-            hora = st.time_input("Hora")
-            punto = st.selectbox("Punto", PUNTOS)
-    
-        with c2:
-            hc = st.number_input("HC", value=0.0)
-            ss = st.number_input("SS", value=0.0)
-    
-        with c3:
-            dqo = st.number_input("DQO", value=0.0)
-            sulf = st.number_input("Sulf", value=0.0)
-    
-        if st.button("💾 Guardar analítica"):
-            dt = datetime.combine(fecha, hora)
-            dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-    
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO analiticas
-                (datetime, punto, HC, SS, DQO, Sulf)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (dt_str, punto, hc, ss, dqo, sulf)
-            )
-            conn.commit()
-    
-            st.success("Analítica guardada")
-            st.experimental_rerun()
+    with st.expander("➕ Añadir analítica manual", expanded=False):
 
+    c1, c2, c3 = st.columns(3)
 
-    # ---------- ENVÍO A EMISARIO ----------
-    st.subheader("📅 Envío a emisario (por día)")
+    with c1:
+        fecha = st.date_input("Fecha")
+        hora = st.time_input("Hora")
+        punto = st.selectbox("Punto", PUNTOS)
 
-    if not df.empty:
-        dias = df[["dia"]].drop_duplicates().sort_values("dia")
-        tabla = dias.merge(
-            df_envio,
-            on="dia",
-            how="left"
-        ).fillna({"envio_emisario": 0})
+    with c2:
+        hc = st.number_input("HC", value=0.0)
+        ss = st.number_input("SS", value=0.0)
 
-        tabla_edit = st.data_editor(
-            tabla,
-            hide_index=True,
-            use_container_width=True
+    with c3:
+        dqo = st.number_input("DQO", value=0.0)
+        sulf = st.number_input("Sulf", value=0.0)
+
+    if st.button("💾 Guardar analítica"):
+        dt = datetime.combine(fecha, hora)
+        dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO analiticas
+            (datetime, punto, HC, SS, DQO, Sulf)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (dt_str, punto, hc, ss, dqo, sulf)
         )
+        conn.commit()
 
-        if st.button("💾 Guardar envío a emisario"):
-            conn.execute("DELETE FROM envio_emisario")
-            tabla_edit.to_sql("envio_emisario", conn, if_exists="append", index=False)
-            conn.commit()
-            st.success("Envío a emisario actualizado")
+        st.success("Analítica guardada")
+        st.experimental_rerun()
+
+
+# ---------- ENVÍO A EMISARIO ----------
+st.subheader("📅 Envío a emisario (por día)")
+
+if not df.empty:
+    dias = df[["dia"]].drop_duplicates().sort_values("dia")
+    tabla = dias.merge(
+        df_envio,
+        on="dia",
+        how="left"
+    ).fillna({"envio_emisario": 0})
+
+    tabla_edit = st.data_editor(
+        tabla,
+        hide_index=True,
+        use_container_width=True
+    )
+
+    if st.button("💾 Guardar envío a emisario"):
+        conn.execute("DELETE FROM envio_emisario")
+        tabla_edit.to_sql("envio_emisario", conn, if_exists="append", index=False)
+        conn.commit()
+        st.success("Envío a emisario actualizado")
 
 conn.close()
