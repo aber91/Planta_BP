@@ -238,10 +238,12 @@ else:
     c1.metric("HC promedio", f"{df_p['HC'].mean():.2f} ppm")
     c2.metric("DQO promedio", f"{df_p['DQO'].mean():.2f} ppm")
 
-# ================= PDF =================
-st.subheader("📄 Informe mensual PDF")
+# ================= PDF VISUAL =================
+st.subheader("📄 Informe mensual visual (PDF)")
 
 from io import BytesIO
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 if not df.empty:
     mes = st.selectbox(
@@ -249,33 +251,45 @@ if not df.empty:
         sorted(df["datetime"].dt.to_period("M").astype(str).unique())
     )
 
-    if st.button("📥 Generar y descargar PDF"):
+    if st.button("📥 Generar informe visual"):
         buffer = BytesIO()
-        c = canvas.Canvas(buffer, pagesize=A4)
-        t = c.beginText(40, 800)
 
-        t.textLine(f"Informe mensual de analíticas – {mes}")
-        t.textLine("")
-        t.textLine("Fecha | Punto | HC | SS | DQO | Sulf | Envío emisario")
-        t.textLine("-" * 95)
+        with PdfPages(buffer) as pdf:
+            df_mes = df[df["datetime"].dt.to_period("M").astype(str) == mes]
+            df_mes["dia"] = df_mes["datetime"].dt.date
 
-        df_mes = df[df["datetime"].dt.to_period("M").astype(str) == mes]
+            for parametro in ["HC", "DQO"]:
+                fig, ax = plt.subplots(figsize=(10, 5))
 
-        for _, r in df_mes.iterrows():
-            t.textLine(
-                f"{r['datetime']} | {r['punto']} | "
-                f"{r['HC']} | {r['SS']} | {r['DQO']} | {r['Sulf']} | "
-                f"{'Sí' if r['envio_emisario'] else 'No'}"
-            )
+                for punto in ["Entrada Planta", "X-507", "Salida FCA"]:
+                    df_p = (
+                        df_mes[df_mes["punto"] == punto]
+                        .groupby("dia")[parametro]
+                        .mean()
+                    )
+                    ax.plot(df_p.index, df_p.values, marker="o", label=punto)
 
-        c.drawText(t)
-        c.save()
+                # Límites legales
+                lim = LIMITES[parametro]
+                ax.axhline(lim["puntual"], color="red", linestyle="-", label="Límite puntual")
+                ax.axhline(lim["anual"], color="orange", linestyle="--", label="Límite anual")
+
+                ax.set_title(f"{parametro} – {mes}")
+                ax.set_xlabel("Día")
+                ax.set_ylabel("ppm")
+                ax.legend()
+                ax.grid(True)
+
+                plt.tight_layout()
+                pdf.savefig(fig)
+                plt.close(fig)
 
         buffer.seek(0)
 
         st.download_button(
             label="⬇️ Descargar informe PDF",
             data=buffer,
-            file_name=f"informe_analiticas_{mes}.pdf",
+            file_name=f"informe_visual_analiticas_{mes}.pdf",
             mime="application/pdf"
         )
+
