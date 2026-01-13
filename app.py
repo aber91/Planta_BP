@@ -289,6 +289,55 @@ with tab_gestion:
 
     st.divider()
 
+st.divider()
+st.subheader("💾 Copia de seguridad de la base de datos")
+
+# ---------- BACKUP ----------
+try:
+    with open(DB_PATH, "rb") as f:
+        st.download_button(
+            label="📥 Descargar backup de la base de datos",
+            data=f,
+            file_name="planta_backup.db",
+            mime="application/octet-stream",
+            key="download_db_backup"
+        )
+except FileNotFoundError:
+    st.warning("No se ha encontrado la base de datos para hacer backup")
+
+st.markdown(
+    """
+    ⚠️ **Recomendación**  
+    Descarga un backup:
+    - antes de cerrar un mes  
+    - antes de grandes cambios  
+    - antes de reimportar datos  
+    """
+)
+
+# ---------- RESTORE ----------
+    st.subheader("♻️ Restaurar base de datos")
+    
+    uploaded_db = st.file_uploader(
+        "Selecciona un archivo de backup (.db)",
+        type=["db"],
+        key="upload_db_backup"
+    )
+    
+    if uploaded_db is not None:
+        st.warning(
+            "⚠️ Esta acción sobrescribirá TODOS los datos actuales. "
+            "Asegúrate de que el archivo es correcto."
+        )
+    
+        if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
+            with open(DB_PATH, "wb") as f:
+                f.write(uploaded_db.read())
+    
+            st.success("Base de datos restaurada correctamente.")
+            st.info("La aplicación se reiniciará para cargar los nuevos datos.")
+            st.rerun()
+    
     # -------- MANUAL --------
     with st.expander("➕ Añadir analítica manual", expanded=False):
         c1, c2, c3 = st.columns(3)
