@@ -23,7 +23,7 @@ LIMITES = {
 st.set_page_config("Control Analíticas Planta", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
-# ================= CARGA DATOS =================
+# ================= CARGA DE DATOS =================
 if os.path.exists(DATA_FILE):
     df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
 else:
@@ -38,14 +38,13 @@ if os.path.exists(ENVIO_FILE):
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
-# ================= UTILIDADES =================
+# ================= FUNCIONES =================
 def analitica_valida_por_dia_salida_fca(df_in):
     """
-    Devuelve la analítica válida por día para Salida FCA:
-    - Si las dos últimas están separadas <= 1 minuto,
-      se toma el MEJOR valor (mínimo) por parámetro
-    - Si no, se toma la última analítica
-    - Si ambos valores son NaN → se mantiene NaN
+    Para Salida FCA:
+    - Si las dos últimas analíticas del día están separadas ≤ 1 minuto,
+      toma el MEJOR valor (mínimo) por parámetro
+    - Si no, toma la última
     """
     resultados = []
 
@@ -62,9 +61,7 @@ def analitica_valida_por_dia_salida_fca(df_in):
         if diff_min <= 1:
             fila = ult.copy()
             for p in ["HC", "SS", "DQO", "Sulf"]:
-                valores = [
-                    v for v in [ult[p], penult[p]] if pd.notna(v)
-                ]
+                valores = [v for v in [ult[p], penult[p]] if pd.notna(v)]
                 fila[p] = min(valores) if valores else pd.NA
             resultados.append(fila)
         else:
@@ -82,6 +79,7 @@ tab_dashboard, tab_gestion = st.tabs(
 # =====================================================================
 with tab_dashboard:
 
+    # ---------- PROMEDIOS ----------
     st.subheader("📐 Promedios acumulados (Salida FCA)")
 
     if df.empty or df_envio.empty:
@@ -94,17 +92,17 @@ with tab_dashboard:
             (df["dia"].isin(dias_envio))
         ]
 
-        df_salida_ultima = analitica_valida_por_dia_salida_fca(df_salida)
-        df_salida_ultima = df_salida_ultima.dropna(subset=["HC", "DQO"])
+        df_salida_valida = analitica_valida_por_dia_salida_fca(df_salida)
+        df_salida_valida = df_salida_valida.dropna(subset=["HC", "DQO"])
 
-        if df_salida_ultima.empty:
+        if df_salida_valida.empty:
             st.info("No hay datos válidos para promedio")
         else:
             c1, c2 = st.columns(2)
-            c1.metric("HC promedio", f"{df_salida_ultima['HC'].mean():.2f} ppm")
-            c2.metric("DQO promedio", f"{df_salida_ultima['DQO'].mean():.2f} ppm")
+            c1.metric("HC promedio", f"{df_salida_valida['HC'].mean():.2f} ppm")
+            c2.metric("DQO promedio", f"{df_salida_valida['DQO'].mean():.2f} ppm")
 
-    # ================= GRÁFICOS =================
+    # ---------- GRÁFICOS ----------
     st.subheader("📈 Evolución de parámetros")
 
     col1, col2 = st.columns(2)
@@ -113,7 +111,6 @@ with tab_dashboard:
 
     df_g = df[df["punto"] == punto_sel]
 
-    # 👉 Para Salida FCA solo última analítica diaria
     if punto_sel == "Salida FCA":
         df_g = analitica_valida_por_dia_salida_fca(df_g)
 
@@ -144,43 +141,96 @@ with tab_dashboard:
             use_container_width=True
         )
 
-        # ---------- DESCARGAR GRÁFICO ----------
-        fig, ax = plt.subplots(figsize=(8, 4))
+        # ---------- DESCARGA IMAGEN ----------
         df_plot = df_g.dropna(subset=[param_sel]).copy()
-        ax.plot(
-            df_plot["datetime"],
-            df_plot[param_sel].astype(float),
-            marker="o"
-        )
+        if not df_plot.empty:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.plot(
+                df_plot["datetime"],
+                df_plot[param_sel].astype(float),
+                marker="o"
+            )
 
+            if param_sel in LIMITES:
+                ax.axhline(LIMITES[param_sel]["puntual"], color="red")
+                ax.axhline(LIMITES[param_sel]["anual"], color="orange", linestyle="--")
 
-        if param_sel in LIMITES:
-            ax.axhline(LIMITES[param_sel]["puntual"], color="red")
-            ax.axhline(LIMITES[param_sel]["anual"], color="orange", linestyle="--")
+            ax.set_title(f"{param_sel} – {punto_sel}")
+            ax.grid(True)
 
-        ax.set_title(f"{param_sel} – {punto_sel}")
-        ax.grid(True)
+            img = BytesIO()
+            plt.tight_layout()
+            plt.savefig(img, format="png")
+            plt.close(fig)
+            img.seek(0)
 
-        img = BytesIO()
-        plt.tight_layout()
-        plt.savefig(img, format="png")
-        plt.close(fig)
-        img.seek(0)
-
-        c1, c2 = st.columns(2)
-
-        c1.download_button(
-            "⬇️ Descargar gráfico",
-            data=img,
-            file_name=f"{param_sel}_{punto_sel}.png",
-            mime="image/png"
-        )
+            st.download_button(
+                "⬇️ Descargar gráfico",
+                data=img,
+                file_name=f"{param_sel}_{punto_sel}.png",
+                mime="image/png"
+            )
 
 # =====================================================================
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================================
 with tab_gestion:
 
+    # ---------- IMPORTAR ----------
+    st.subheader("📥 Importar datos desde Excel")
+
+    if st.button("Importar desde /data"):
+        archivos = {
+            "entrada_planta.xlsx": "Entrada Planta",
+            "x507.xlsx": "X-507",
+            "salidafca.xlsx": "Salida FCA"
+        }
+
+        nuevos = []
+
+        for archivo, punto in archivos.items():
+            ruta = os.path.join(DATA_DIR, archivo)
+            if not os.path.exists(ruta):
+                continue
+
+            xls = pd.read_excel(
+                ruta,
+                engine="openpyxl",
+                usecols="C:H",
+                names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+                header=None
+            )
+
+            for _, r in xls.iterrows():
+                try:
+                    dt = datetime.combine(
+                        pd.to_datetime(r["Fecha"]).date(),
+                        pd.to_datetime(r["Hora"]).time()
+                    )
+                except Exception:
+                    continue
+
+                nuevos.append({
+                    "datetime": dt,
+                    "punto": punto,
+                    "HC": r["HC"],
+                    "SS": r["SS"],
+                    "DQO": r["DQO"],
+                    "Sulf": r["Sulf"]
+                })
+
+        if nuevos:
+            df = pd.concat([df, pd.DataFrame(nuevos)], ignore_index=True)
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df["dia"] = df["datetime"].dt.date
+            df.to_csv(DATA_FILE, index=False)
+            st.success(f"Importados {len(nuevos)} registros")
+        else:
+            st.info("No se importaron datos")
+
+    st.divider()
+
+    # ---------- ENVÍO A EMISARIO ----------
     st.subheader("📅 Envío a emisario (por día)")
 
     if not df.empty:
@@ -206,7 +256,12 @@ with tab_gestion:
             df_envio = tabla_edit.copy()
             df_envio.to_csv(ENVIO_FILE, index=False)
             st.success("Decisiones guardadas")
+    else:
+        st.info("No hay días con analíticas")
 
+    st.divider()
+
+    # ---------- DATOS ANALÍTICOS ----------
     st.subheader("📊 Datos analíticos")
 
     if not df.empty:
@@ -222,3 +277,5 @@ with tab_gestion:
             df["dia"] = df["datetime"].dt.date
             df.to_csv(DATA_FILE, index=False)
             st.success("Datos guardados")
+    else:
+        st.info("No hay datos cargados")
