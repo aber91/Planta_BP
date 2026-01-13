@@ -1,7 +1,14 @@
+# =====================================================
+# app.py – v2.1 FULL
+# Control de analíticas – Planta de tratamiento de aguas
+# Persistencia: SQLite (BBDD real)
+# =====================================================
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 import os
+import sqlite3
 import altair as alt
 import matplotlib.pyplot as plt
 from io import BytesIO
@@ -9,9 +16,13 @@ from io import BytesIO
 # =====================================================
 # CONFIGURACIÓN GENERAL
 # =====================================================
-DATA_FILE = "datos_analiticas.csv"
-ENVIO_FILE = "envio_emisario.csv"
-DATA_DIR = "data"
+PERSISTENT_DIR = "/mount/data"
+os.makedirs(PERSISTENT_DIR, exist_ok=True)
+
+DB_PATH = f"{PERSISTENT_DIR}/planta.db"
+
+LEGACY_ANALITICAS = "datos_analiticas.csv"
+LEGACY_ENVIO = "envio_emisario.csv"
 
 PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
@@ -21,35 +32,94 @@ LIMITES = {
     "DQO": {"puntual": 700, "anual": 125}
 }
 
-st.set_page_config(page_title="Control de analíticas", layout="wide")
+st.set_page_config(
+    page_title="Control de analíticas – Planta",
+    layout="wide"
+)
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
 # =====================================================
-# CARGA DE DATOS
+# BASE DE DATOS
 # =====================================================
-if os.path.exists(DATA_FILE):
-    df = pd.read_csv(DATA_FILE, parse_dates=["datetime"])
-else:
-    df = pd.DataFrame(columns=["datetime", "punto", "HC", "SS", "DQO", "Sulf"])
+def get_conn():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+def init_db():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS analiticas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            datetime TEXT NOT NULL,
+            punto TEXT NOT NULL,
+            HC REAL,
+            SS REAL,
+            DQO REAL,
+            Sulf REAL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS envio_emisario (
+            dia TEXT PRIMARY KEY,
+            envio_emisario INTEGER NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+def migrate_legacy_if_needed():
+    conn = get_conn()
+
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM analiticas")
+    tiene_datos = cur.fetchone()[0] > 0
+
+    if not tiene_datos and os.path.exists(LEGACY_ANALITICAS):
+        df = pd.read_csv(LEGACY_ANALITICAS, parse_dates=["datetime"])
+        if not df.empty:
+            df.to_sql("analiticas", conn, if_exists="append", index=False)
+
+    if os.path.exists(LEGACY_ENVIO):
+        df_env = pd.read_csv(LEGACY_ENVIO)
+        if not df_env.empty:
+            df_env.to_sql("envio_emisario", conn, if_exists="replace", index=False)
+
+    conn.close()
+
+# Inicialización BBDD
+if not os.path.exists(DB_PATH):
+    init_db()
+    migrate_legacy_if_needed()
+
+# =====================================================
+# CARGA DE DATOS DESDE SQLITE
+# =====================================================
+conn = get_conn()
+
+df = pd.read_sql(
+    "SELECT * FROM analiticas",
+    conn,
+    parse_dates=["datetime"]
+)
 
 if not df.empty:
     df["dia"] = df["datetime"].dt.date
 
-if os.path.exists(ENVIO_FILE):
-    df_envio = pd.read_csv(ENVIO_FILE)
+df_envio = pd.read_sql(
+    "SELECT * FROM envio_emisario",
+    conn
+)
+
+if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
-else:
-    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
 # =====================================================
 def analitica_valida_por_dia_salida_fca(df_in):
-    """
-    Salida FCA:
-    - Una analítica al día
-    - Si las dos últimas están a ≤1 minuto → mejor valor
-    """
     resultados = []
 
     for dia, grupo in df_in.sort_values("datetime").groupby("dia"):
@@ -59,14 +129,13 @@ def analitica_valida_por_dia_salida_fca(df_in):
 
         ult = grupo.iloc[-1]
         penult = grupo.iloc[-2]
+        diff = (ult["datetime"] - penult["datetime"]).total_seconds() / 60
 
-        diff_min = (ult["datetime"] - penult["datetime"]).total_seconds() / 60
-
-        if diff_min <= 1:
+        if diff <= 1:
             fila = ult.copy()
             for p in ["HC", "SS", "DQO", "Sulf"]:
                 vals = [v for v in [ult[p], penult[p]] if pd.notna(v)]
-                fila[p] = min(vals) if vals else pd.NA
+                fila[p] = min(vals) if vals else None
             resultados.append(fila)
         else:
             resultados.append(ult)
@@ -74,7 +143,7 @@ def analitica_valida_por_dia_salida_fca(df_in):
     return pd.DataFrame(resultados)
 
 def estado_global(hc, dqo):
-    if pd.isna(hc) or pd.isna(dqo):
+    if hc is None or dqo is None:
         return "⚪ Sin dato"
     if hc > LIMITES["HC"]["puntual"] or dqo > LIMITES["DQO"]["puntual"]:
         return "🔴 NO CONFORME"
@@ -83,7 +152,7 @@ def estado_global(hc, dqo):
     return "🟢 OK"
 
 # =====================================================
-# PESTAÑAS
+# PESTAÑAS PRINCIPALES
 # =====================================================
 tab_estado, tab_dashboard, tab_gestion = st.tabs(
     ["🟢 Estado de la planta", "📊 Dashboard", "🛠️ Gestión de datos"]
@@ -93,20 +162,19 @@ tab_estado, tab_dashboard, tab_gestion = st.tabs(
 # 🟢 ESTADO DE LA PLANTA
 # =====================================================
 with tab_estado:
-
     st.subheader("🟢 HOY – Estado actual de la planta (Salida FCA)")
 
     hoy = date.today()
-
-    envio_hoy = (
-        not df_envio.empty and
-        hoy in df_envio[df_envio["envio_emisario"]]["dia"].values
-    )
 
     df_hoy = df[
         (df["punto"] == "Salida FCA") &
         (df["dia"] == hoy)
     ]
+
+    envio_hoy = (
+        not df_envio.empty and
+        hoy in df_envio[df_envio["envio_emisario"] == 1]["dia"].values
+    )
 
     if df_hoy.empty:
         st.warning("No hay analítica de hoy")
@@ -122,25 +190,22 @@ with tab_estado:
         st.markdown(
             f"""
             **Última analítica válida:** {fila['datetime'].strftime('%H:%M')}  
-            **Envío a emisario:** {'✅ Sí' if envio_hoy else '❌ No'}
+            **Envío a emisario:** {'✅ Sí' if envio_hoy else '❌ No'}  
+            **Estado global:** {estado_global(fila['HC'], fila['DQO'])}
             """
         )
-
-        st.info(f"**Estado global:** {estado_global(fila['HC'], fila['DQO'])}")
 
     st.divider()
 
     st.subheader("📋 Parte diario de planta (Salida FCA)")
 
-    if df.empty:
-        st.info("No hay datos históricos")
-    else:
-        df_salida = df[df["punto"] == "Salida FCA"]
-        df_valida = analitica_valida_por_dia_salida_fca(df_salida)
+    df_salida = df[df["punto"] == "Salida FCA"]
+    df_valida = analitica_valida_por_dia_salida_fca(df_salida)
 
+    if not df_valida.empty:
         parte = df_valida[["dia", "HC", "DQO"]].copy()
         parte["Envío"] = parte["dia"].isin(
-            df_envio[df_envio["envio_emisario"]]["dia"]
+            df_envio[df_envio["envio_emisario"] == 1]["dia"]
         )
         parte["Estado"] = parte.apply(
             lambda r: estado_global(r["HC"], r["DQO"]), axis=1
@@ -155,28 +220,27 @@ with tab_estado:
 # 📊 DASHBOARD (PROMEDIOS + GRÁFICOS)
 # =====================================================
 with tab_dashboard:
-
     st.subheader("📐 Promedios acumulados (Salida FCA)")
 
     if df.empty or df_envio.empty:
         st.info("No hay datos suficientes")
     else:
-        dias_envio = df_envio[df_envio["envio_emisario"]]["dia"]
+        dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
 
-        df_salida = df[
+        df_salida_envio = df[
             (df["punto"] == "Salida FCA") &
             (df["dia"].isin(dias_envio))
         ]
 
-        df_valida = analitica_valida_por_dia_salida_fca(df_salida)
-        df_valida = df_valida.dropna(subset=["HC", "DQO"])
+        df_valida_envio = analitica_valida_por_dia_salida_fca(df_salida_envio)
+        df_valida_envio = df_valida_envio.dropna(subset=["HC", "DQO"])
 
-        if df_valida.empty:
+        if df_valida_envio.empty:
             st.info("No hay días válidos para promedio")
         else:
             c1, c2 = st.columns(2)
-            c1.metric("HC promedio", f"{df_valida['HC'].mean():.2f} ppm")
-            c2.metric("DQO promedio", f"{df_valida['DQO'].mean():.2f} ppm")
+            c1.metric("HC promedio", f"{df_valida_envio['HC'].mean():.2f} ppm")
+            c2.metric("DQO promedio", f"{df_valida_envio['DQO'].mean():.2f} ppm")
 
     st.subheader("📈 Evolución de parámetros")
 
@@ -194,12 +258,6 @@ with tab_dashboard:
             y=alt.Y(f"{param_sel}:Q", title=param_sel),
             tooltip=["datetime:T", param_sel]
         )
-
-        if param_sel in LIMITES:
-            chart += alt.Chart(pd.DataFrame(
-                {"y": [LIMITES[param_sel]["puntual"]]}
-            )).mark_rule(color="red").encode(y="y:Q")
-
         st.altair_chart(chart, use_container_width=True)
 
 # =====================================================
@@ -207,62 +265,43 @@ with tab_dashboard:
 # =====================================================
 with tab_gestion:
 
-    st.subheader("📥 Importar datos desde Excel")
+    # ---------- IMPORTACIÓN MANUAL ----------
+    st.subheader("➕ Añadir analítica manual")
 
-    if st.button("Importar desde /data"):
-        archivos = {
-            "entrada_planta.xlsx": "Entrada Planta",
-            "x507.xlsx": "X-507",
-            "salidafca.xlsx": "Salida FCA"
-        }
+    with st.form("add_manual"):
+        fecha = st.date_input("Fecha")
+        hora = st.time_input("Hora")
+        punto = st.selectbox("Punto", PUNTOS)
+        hc = st.number_input("HC", value=0.0)
+        ss = st.number_input("SS", value=0.0)
+        dqo = st.number_input("DQO", value=0.0)
+        sulf = st.number_input("Sulf", value=0.0)
 
-        nuevos = []
-
-        for archivo, punto in archivos.items():
-            ruta = os.path.join(DATA_DIR, archivo)
-            if not os.path.exists(ruta):
-                continue
-
-            xls = pd.read_excel(
-                ruta,
-                engine="openpyxl",
-                usecols="C:H",
-                names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
-                header=None
+        if st.form_submit_button("Guardar"):
+            conn.execute(
+                """
+                INSERT INTO analiticas
+                (datetime, punto, HC, SS, DQO, Sulf)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (datetime.combine(fecha, hora), punto, hc, ss, dqo, sulf)
             )
-
-            for _, r in xls.iterrows():
-                try:
-                    dt = datetime.combine(
-                        pd.to_datetime(r["Fecha"]).date(),
-                        pd.to_datetime(r["Hora"]).time()
-                    )
-                except Exception:
-                    continue
-
-                nuevos.append({
-                    "datetime": dt,
-                    "punto": punto,
-                    "HC": r["HC"],
-                    "SS": r["SS"],
-                    "DQO": r["DQO"],
-                    "Sulf": r["Sulf"]
-                })
-
-        if nuevos:
-            df = pd.concat([df, pd.DataFrame(nuevos)], ignore_index=True)
-            df["datetime"] = pd.to_datetime(df["datetime"])
-            df["dia"] = df["datetime"].dt.date
-            df.to_csv(DATA_FILE, index=False)
-            st.success(f"Importados {len(nuevos)} registros")
+            conn.commit()
+            st.success("Analítica guardada")
 
     st.divider()
 
+    # ---------- ENVÍO A EMISARIO ----------
     st.subheader("📅 Envío a emisario (por día)")
 
     if not df.empty:
         dias = df[["dia"]].drop_duplicates().sort_values("dia")
-        tabla = dias.merge(df_envio, on="dia", how="left").fillna(False)
+
+        tabla = dias.merge(
+            df_envio,
+            on="dia",
+            how="left"
+        ).fillna({"envio_emisario": 0})
 
         tabla_edit = st.data_editor(
             tabla,
@@ -270,25 +309,10 @@ with tab_gestion:
             use_container_width=True
         )
 
-        if st.button("💾 Guardar envío"):
-            df_envio = tabla_edit.copy()
-            df_envio.to_csv(ENVIO_FILE, index=False)
-            st.success("Envío a emisario guardado")
+        if st.button("💾 Guardar envío a emisario"):
+            conn.execute("DELETE FROM envio_emisario")
+            tabla_edit.to_sql("envio_emisario", conn, if_exists="append", index=False)
+            conn.commit()
+            st.success("Envío a emisario actualizado")
 
-    st.divider()
-
-    st.subheader("📊 Datos analíticos")
-
-    if not df.empty:
-        df_edit = st.data_editor(
-            df.drop(columns=["dia"]).sort_values("datetime", ascending=False),
-            num_rows="dynamic",
-            use_container_width=True
-        )
-
-        if st.button("💾 Guardar cambios"):
-            df = df_edit.copy()
-            df["datetime"] = pd.to_datetime(df["datetime"])
-            df["dia"] = df["datetime"].dt.date
-            df.to_csv(DATA_FILE, index=False)
-            st.success("Datos actualizados")
+conn.close()
