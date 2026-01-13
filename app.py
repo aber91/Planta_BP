@@ -312,7 +312,43 @@ with tab_gestion:
         st.success(f"Importadas {insertados} analíticas nuevas")
 
     st.divider()
-
+    # ---------- TABLA DATOS ----------
+    st.divider()
+    st.subheader("📊 Datos analíticos (editar / borrar)")
+    
+    if df.empty:
+        st.info("No hay analíticas cargadas")
+    else:
+        df_edit = df.copy()
+    
+        # Mostrar tabla editable
+        df_editable = st.data_editor(
+            df_edit.drop(columns=["dia"]),
+            use_container_width=True,
+            num_rows="dynamic",
+            hide_index=True
+        )
+    
+        if st.button("💾 Guardar cambios en analíticas"):
+            # Normalizar datetime antes de guardar
+            df_editable["datetime"] = pd.to_datetime(
+                df_editable["datetime"],
+                errors="coerce"
+            ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+            # Reemplazar tabla completa (como antes)
+            conn.execute("DELETE FROM analiticas")
+            df_editable.to_sql(
+                "analiticas",
+                conn,
+                if_exists="append",
+                index=False
+            )
+            conn.commit()
+    
+            st.success("Analíticas actualizadas correctamente")
+            st.experimental_rerun()
+        
     # ---------- AÑADIR MANUAL ----------
     st.subheader("➕ Añadir analítica manual")
 
