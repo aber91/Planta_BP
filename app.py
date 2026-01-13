@@ -217,33 +217,6 @@ with tab_gestion:
 
     st.divider()
 
-    # -------- TABLA EDITABLE --------
-    st.subheader("📊 Analíticas (editar / borrar)")
-
-    if df.empty:
-        st.info("No hay datos")
-    else:
-        df_edit = st.data_editor(
-            df.drop(columns=["dia"]),
-            hide_index=True,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="editor_analiticas"
-        )
-
-        if st.button("💾 Guardar cambios", key="btn_save_table"):
-            df_edit["datetime"] = pd.to_datetime(
-                df_edit["datetime"], errors="coerce"
-            ).dt.strftime("%Y-%m-%d %H:%M:%S")
-
-            conn.execute("DELETE FROM analiticas")
-            df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
-            conn.commit()
-            st.success("Datos actualizados")
-            st.rerun()
-
-    st.divider()
-
     # -------- MANUAL --------
     with st.expander("➕ Añadir analítica manual", expanded=False):
         c1, c2, c3 = st.columns(3)
@@ -274,6 +247,33 @@ with tab_gestion:
                 st.rerun()
             except sqlite3.IntegrityError:
                 st.warning("Analítica ya existente")
+
+    st.divider()
+
+    # -------- TABLA EDITABLE --------
+    st.subheader("📊 Analíticas (editar / borrar)")
+
+    if df.empty:
+        st.info("No hay datos")
+    else:
+        df_edit = st.data_editor(
+            df.drop(columns=["dia"]),
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="editor_analiticas"
+        )
+
+        if st.button("💾 Guardar cambios", key="btn_save_table"):
+            df_edit["datetime"] = pd.to_datetime(
+                df_edit["datetime"], errors="coerce"
+            ).dt.strftime("%Y-%m-%d %H:%M:%S")
+
+            conn.execute("DELETE FROM analiticas")
+            df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
+            conn.commit()
+            st.success("Datos actualizados")
+            st.rerun()
 
     st.divider()
 
