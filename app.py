@@ -972,7 +972,8 @@ with tab_dashboard:
                 "Ligera caída de eficiencia"
             ]
     
-    return resultado
+        return resultado
+
     
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
