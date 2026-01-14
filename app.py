@@ -278,16 +278,74 @@ with tab_dashboard:
             )
         )
 
-    if capas:
-        chart = capas[0]
-        for c in capas[1:]:
-            chart = chart + c
+        if not df_plot.empty:
     
-        chart = chart.resolve_scale(y="shared")
+        fig = go.Figure()
     
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.info("No hay datos para el gráfico")
+        # --- Líneas de datos ---
+        if punto_sel == "Comparativo":
+            colores = {
+                "Entrada Planta": "blue",
+                "X-507": "orange",
+                "Salida FCA": "green",
+            }
+            for p in PUNTOS:
+                df_p = df_plot[df_plot["punto"] == p]
+                if p == "Salida FCA":
+                    df_p = analitica_valida_salida_fca(df_p)
+    
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_p["datetime"],
+                        y=df_p[param_sel],
+                        mode="lines+markers",
+                        name=p,
+                        line=dict(color=colores[p])
+                    )
+                )
+        else:
+            df_p = df_plot[df_plot["punto"] == punto_sel]
+            if punto_sel == "Salida FCA":
+                df_p = analitica_valida_salida_fca(df_p)
+    
+            fig.add_trace(
+                go.Scatter(
+                    x=df_p["datetime"],
+                    y=df_p[param_sel],
+                    mode="lines+markers",
+                    name=punto_sel
+                )
+            )
+    
+        # --- Límites legales ---
+        if param_sel in LIMITES:
+            fig.add_hline(
+                y=LIMITES[param_sel]["anual"],
+                line_dash="dash",
+                line_color="orange",
+                annotation_text="Límite anual",
+                annotation_position="top left"
+            )
+            fig.add_hline(
+                y=LIMITES[param_sel]["puntual"],
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Límite puntual",
+                annotation_position="top left"
+            )
+    
+        fig.update_layout(
+            height=450,
+            margin=dict(l=40, r=40, t=40, b=40),
+            xaxis_title="Fecha",
+            yaxis_title=param_sel,
+            legend_title="Punto",
+        )
+    
+        st.plotly_chart(fig, use_container_width=True)
+
+else:
+    st.info("No hay datos para el gráfico")
 
       # ---------- ESTADO DIARIO MENSUAL ----------
     with st.expander("📅 Estado diario de la planta (mes)"):
