@@ -116,6 +116,20 @@ def estado_global(hc, dqo):
         return "🟠 ATENCIÓN"
     return "🟢 OK"
 
+def semaforo_promedio(valor, limite_anual):
+    """
+    Devuelve un semáforo en función de lo desviado que esté
+    el valor respecto al límite anual.
+    """
+    if valor is None or pd.isna(valor):
+        return "⚪"
+    ratio = valor / limite_anual
+    if ratio > 1:
+        return "🔴"
+    if ratio > 0.8:
+        return "🟠"
+    return "🟢"
+
 # =====================================================
 # PESTAÑAS
 # =====================================================
