@@ -744,8 +744,13 @@ with tab_dashboard:
     else:
         st.info("No hay datos para el gráfico")
 
+    # -------------------------------------------------
+    # Eficiencias
+    # -------------------------------------------------
+    
     st.markdown("### 🧪 Eficiencia de eliminación diaria")
-
+    df_eff = calcular_eficiencias_diarias(df_plot, param_sel)
+    
     if not df_eff.empty:
     
         fig_eff = go.Figure()
