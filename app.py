@@ -130,6 +130,30 @@ def semaforo_promedio(valor, limite_anual):
         return "🟠"
     return "🟢"
 
+def calcular_upa(valor_actual_medio, n_dias_actuales, estimado, n_dias_restantes):
+    """
+    Calcula la UPA (Última Previsión Anual).
+
+    valor_actual_medio : promedio real hasta hoy
+    n_dias_actuales    : nº de días con envío a emisario ya transcurridos
+    estimado           : valor medio estimado hasta final de año
+    n_dias_restantes   : nº de días restantes del año
+    """
+    if (
+        valor_actual_medio is None
+        or pd.isna(valor_actual_medio)
+        or n_dias_actuales == 0
+    ):
+        return None
+
+    total_acumulado = (
+        (valor_actual_medio * n_dias_actuales)
+        + (estimado * n_dias_restantes)
+    )
+
+    return total_acumulado / (n_dias_actuales + n_dias_restantes)
+
+
 # =====================================================
 # PESTAÑAS
 # =====================================================
