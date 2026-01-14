@@ -939,7 +939,7 @@ with tab_dashboard:
         }
     
         if parametro not in ["HC", "DQO"]:
-            return resultado
+        return resultado
     
         # ---------- SALIDA FCA ----------
         df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
