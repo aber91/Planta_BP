@@ -992,7 +992,7 @@ with tab_dashboard:
                 "Ligera caída de eficiencia"
             ]
     
-        return none
+    return none
        
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
