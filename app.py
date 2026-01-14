@@ -238,6 +238,70 @@ def calcular_eficiencias_diarias(df, parametro):
 
     return pd.DataFrame(resultados)
 
+def diagnostico_filtros_fca(df_plot, parametro):
+    """
+    Diagnóstico automático de filtros FCA
+    Basado en EMA(7) y eficiencia X-507 → Salida FCA
+    """
+
+    resultado = {
+        "estado": "🟢 Normal",
+        "mensaje": "Funcionamiento dentro de parámetros normales.",
+        "motivos": []
+    }
+
+    if parametro not in ["HC", "DQO"]:
+        return resultado
+
+    # --- Salida FCA ---
+    df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
+    if df_salida.empty or len(df_salida) < 7:
+        return resultado
+
+    df_salida = analitica_valida_salida_fca(df_salida)
+    df_salida = df_salida.sort_values("datetime")
+
+    # --- EMA 7 ---
+    df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
+
+    # Pendiente de EMA (últimos valores)
+    ema_diff = df_salida["EMA7"].diff().dropna()
+    subidas = (ema_diff > 0).sum()
+
+    # --- Eficiencia ---
+    df_eff = calcular_eficiencias_diarias(df_plot, parametro)
+    if df_eff.empty:
+        return resultado
+
+    eff_media = df_eff["E_X507_Salida"].dropna().tail(5).mean()
+
+    # --- Entrada estable ---
+    df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
+    entrada_estable = True
+    if not df_ent.empty:
+        ent_vals = df_ent.sort_values("datetime")[parametro].tail(5)
+        if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
+            entrada_estable = False
+
+    # ------------------ LÓGICA ------------------
+    if subidas >= 5 and eff_media is not None and eff_media < 60 and entrada_estable:
+        resultado["estado"] = "🔴 Posible limpieza de filtros"
+        resultado["mensaje"] = "Se detecta saturación progresiva del carbón activo."
+        resultado["motivos"] = [
+            "Tendencia creciente sostenida en Salida FCA (EMA 7)",
+            "Caída de eficiencia en etapa X-507 → Salida FCA",
+            "Entrada estable"
+        ]
+
+    elif subidas >= 3 or (eff_media is not None and eff_media < 70):
+        resultado["estado"] = "🟠 Vigilancia"
+        resultado["mensaje"] = "Se observan señales tempranas de empeoramiento."
+        resultado["motivos"] = [
+            "Tendencia ascendente reciente",
+            "Eficiencia en descenso"
+        ]
+
+    return resultado
 # =====================================================
 # PESTAÑAS
 # =====================================================
@@ -834,7 +898,26 @@ with tab_dashboard:
     
     else:
         st.info("No hay datos suficientes para calcular eficiencias.")
+
+    # -------------------------------------------------
+    # 🧠 DIAGNÓSTICO AUTOMÁTICO
+    # -------------------------------------------------
+    st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
     
+    diag = diagnostico_filtros_fca(df_plot, param_sel)
+    
+    if diag["estado"].startswith("🔴"):
+        st.error(f"{diag['estado']}\n\n{diag['mensaje']}")
+    elif diag["estado"].startswith("🟠"):
+        st.warning(f"{diag['estado']}\n\n{diag['mensaje']}")
+    else:
+        st.success(f"{diag['estado']}\n\n{diag['mensaje']}")
+    
+    if diag["motivos"]:
+        st.markdown("**Motivos detectados:**")
+        for m in diag["motivos"]:
+            st.markdown(f"- {m}")
+   
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
     # -------------------------------------------------
