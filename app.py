@@ -900,17 +900,6 @@ with tab_dashboard:
         st.info("No hay datos suficientes para calcular eficiencias.")
 
     # -------------------------------------------------
-    # 🧠 DIAGNÓSTICO AUTOMÁTICO
-    # -------------------------------------------------
-    st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
-    
-    def diagnostico_filtros_fca(df_plot, parametro):
-        """
-        Diagnóstico automático de filtros FCA
-        Basado en tendencia reciente (EMA7) y eficiencia real
-        """
-
-    # -------------------------------------------------
     # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
     # -------------------------------------------------
     st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
