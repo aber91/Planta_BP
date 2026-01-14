@@ -197,6 +197,47 @@ def texto_margen(margen):
         return f":orange[Margen previsto: +{margen:.1f} ppm]"
     return f":green[Margen previsto: +{margen:.1f} ppm]"
 
+def calcular_eficiencias_diarias(df, parametro):
+    """
+    Calcula eficiencias diarias por etapa:
+    - Entrada -> X-507
+    - X-507 -> Salida FCA
+    - Entrada -> Salida FCA
+    Usa la última analítica válida del día
+    """
+    resultados = []
+
+    for dia, g in df.groupby("dia"):
+        fila = {"dia": dia}
+
+        valores = {}
+        for punto in ["Entrada Planta", "X-507", "Salida FCA"]:
+            df_p = g[g["punto"] == punto]
+            if not df_p.empty:
+                valores[punto] = df_p.sort_values("datetime").iloc[-1][parametro]
+
+        def eficiencia(cin, cout):
+            if cin is None or cout is None or cin == 0:
+                return None
+            return (cin - cout) / cin * 100
+
+        fila["E_Entrada_X507"] = eficiencia(
+            valores.get("Entrada Planta"),
+            valores.get("X-507")
+        )
+        fila["E_X507_Salida"] = eficiencia(
+            valores.get("X-507"),
+            valores.get("Salida FCA")
+        )
+        fila["E_Entrada_Salida"] = eficiencia(
+            valores.get("Entrada Planta"),
+            valores.get("Salida FCA")
+        )
+
+        resultados.append(fila)
+
+    return pd.DataFrame(resultados)
+
 # =====================================================
 # PESTAÑAS
 # =====================================================
@@ -702,6 +743,90 @@ with tab_dashboard:
     
     else:
         st.info("No hay datos para el gráfico")
+
+    st.markdown("### 🧪 Eficiencia de eliminación diaria")
+
+    if not df_eff.empty:
+    
+        fig_eff = go.Figure()
+    
+        # ---- Selectores de etapas ----
+        c_eff1, c_eff2, c_eff3 = st.columns(3)
+    
+        mostrar_e1 = c_eff1.checkbox(
+            "Entrada → X-507",
+            value=False,
+            key=f"eff_e1_{param_sel}"
+        )
+    
+        mostrar_e2 = c_eff2.checkbox(
+            "X-507 → Salida FCA",
+            value=True,
+            key=f"eff_e2_{param_sel}"
+        )
+    
+        mostrar_e3 = c_eff3.checkbox(
+            "Entrada → Salida FCA",
+            value=True,
+            key=f"eff_e3_{param_sel}"
+        )
+    
+        # ---- Series ----
+        if mostrar_e1:
+            fig_eff.add_trace(go.Scatter(
+                x=df_eff["dia"],
+                y=df_eff["E_Entrada_X507"],
+                mode="lines+markers",
+                name="Entrada → X-507"
+            ))
+    
+        if mostrar_e2:
+            fig_eff.add_trace(go.Scatter(
+                x=df_eff["dia"],
+                y=df_eff["E_X507_Salida"],
+                mode="lines+markers",
+                name="X-507 → Salida FCA"
+            ))
+    
+        if mostrar_e3:
+            fig_eff.add_trace(go.Scatter(
+                x=df_eff["dia"],
+                y=df_eff["E_Entrada_Salida"],
+                mode="lines+markers",
+                name="Entrada → Salida FCA"
+            ))
+    
+        # ---- Líneas de referencia ----
+        fig_eff.add_hline(
+            y=70,
+            line_dash="dot",
+            line_color="orange",
+            annotation_text="Atención (70%)",
+            annotation_position="top left"
+        )
+    
+        fig_eff.add_hline(
+            y=50,
+            line_dash="dot",
+            line_color="red",
+            annotation_text="Crítico (50%)",
+            annotation_position="top left"
+        )
+    
+        fig_eff.update_layout(
+            height=350,
+            yaxis_title="Eficiencia (%)",
+            xaxis_title="Fecha",
+            yaxis=dict(range=[-20, 100]),
+            legend=dict(orientation="h", y=-0.25),
+            hovermode="x unified",
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
+    
+        st.plotly_chart(fig_eff, use_container_width=True)
+    
+    else:
+        st.info("No hay datos suficientes para calcular eficiencias.")
     
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
