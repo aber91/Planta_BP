@@ -41,6 +41,9 @@ LIMITES = {
 st.set_page_config(page_title="Control de analíticas", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
+# Año actual (global)
+anio = date.today().year
+
 # =====================================================
 # BASE DE DATOS
 # =====================================================
