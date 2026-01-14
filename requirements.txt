@@ -4,3 +4,4 @@ altair
 reportlab
 openpyxl
 matplotlib
+plotly
