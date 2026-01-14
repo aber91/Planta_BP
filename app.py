@@ -938,7 +938,8 @@ with tab_dashboard:
             "motivos": []
         }
     
-        if parametro not in ["HC", "DQO"]:
+    if parametro not in ["HC", "DQO"]:+
+            
     return resultado
     
         # ---------- SALIDA FCA ----------
