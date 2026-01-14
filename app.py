@@ -532,7 +532,10 @@ with tab_dashboard:
 
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Análisis gráfico")
-    
+
+    # -------------------------------------------------
+    # Selectores
+    # -------------------------------------------------
     c1, c2, c3, c4 = st.columns(4)
     
     punto_sel = c1.selectbox(
@@ -561,7 +564,9 @@ with tab_dashboard:
         f_ini = c4.date_input("Desde", key="graf_ini")
         f_fin = c4.date_input("Hasta", key="graf_fin")
     
-    # --- Filtrado por periodo ---
+    # -------------------------------------------------
+    # Filtrado temporal
+    # -------------------------------------------------
     df_plot = df.copy()
     now = datetime.now()
     
@@ -577,81 +582,39 @@ with tab_dashboard:
             (df_plot["datetime"] <= pd.to_datetime(f_fin))
         ]
     
-    capas = []
-    
-    # --- Líneas ---
-    if punto_sel == "Comparativo":
-        colores = {
-            "Entrada Planta": "steelblue",
-            "X-507": "darkorange",
-            "Salida FCA": "seagreen",
-        }
-        for p in PUNTOS:
-            df_p = df_plot[df_plot["punto"] == p]
-            if p == "Salida FCA":
-                df_p = analitica_valida_salida_fca(df_p)
-    
-            capas.append(
-                alt.Chart(df_p).mark_line(point=True).encode(
-                    x="datetime:T",
-                    y=f"{param_sel}:Q",
-                    color=alt.value(colores[p]),
-                    tooltip=["datetime:T", param_sel]
-                )
-            )
-    else:
-        df_p = df_plot[df_plot["punto"] == punto_sel]
-        if punto_sel == "Salida FCA":
-            df_p = analitica_valida_salida_fca(df_p)
-    
-        capas.append(
-            alt.Chart(df_p).mark_line(point=True).encode(
-                x="datetime:T",
-                y=f"{param_sel}:Q",
-                tooltip=["datetime:T", param_sel]
-            )
+    # -------------------------------------------------
+    # Checkbox EMA (solo sentido en no comparativo)
+    # -------------------------------------------------
+    mostrar_ema = False
+    if punto_sel != "Comparativo":
+        mostrar_ema = st.checkbox(
+            "Mostrar tendencia EMA (7 analíticas)",
+            value=True,
+            key=f"ema7_{punto_sel}_{param_sel}"
         )
     
-    # --- Límites legales como líneas horizontales (ESTABLE) ---
-    if param_sel in LIMITES and not df_plot.empty:
-        limites_df = pd.DataFrame({
-            "limite": ["Anual", "Puntual"],
-            "valor": [
-                LIMITES[param_sel]["anual"],
-                LIMITES[param_sel]["puntual"],
-            ],
-        })
-    
-        capas.append(
-            alt.Chart(limites_df).mark_rule(
-                strokeWidth=2,
-                strokeDash=[6, 4]
-            ).encode(
-                y="valor:Q",
-                color=alt.Color(
-                    "limite:N",
-                    scale=alt.Scale(
-                        domain=["Anual", "Puntual"],
-                        range=["orange", "red"]
-                    ),
-                    legend=alt.Legend(title="Límites legales")
-                )
-            )
-        )
-
+    # -------------------------------------------------
+    # Gráfico
+    # -------------------------------------------------
     if not df_plot.empty:
     
         fig = go.Figure()
     
-        # --- Líneas de datos ---
+        # =============================================
+        # COMPARATIVO
+        # =============================================
         if punto_sel == "Comparativo":
             colores = {
                 "Entrada Planta": "blue",
                 "X-507": "orange",
                 "Salida FCA": "green",
             }
+    
             for p in PUNTOS:
-                df_p = df_plot[df_plot["punto"] == p]
+                df_p = df_plot[df_plot["punto"] == p].copy()
+                if df_p.empty:
+                    continue
+    
                 if p == "Salida FCA":
                     df_p = analitica_valida_salida_fca(df_p)
     
@@ -664,10 +627,17 @@ with tab_dashboard:
                         line=dict(color=colores[p])
                     )
                 )
+    
+        # =============================================
+        # PUNTO ÚNICO
+        # =============================================
         else:
-            df_p = df_plot[df_plot["punto"] == punto_sel]
+            df_p = df_plot[df_plot["punto"] == punto_sel].copy()
+    
             if punto_sel == "Salida FCA":
                 df_p = analitica_valida_salida_fca(df_p)
+    
+            df_p = df_p.sort_values("datetime")
     
             fig.add_trace(
                 go.Scatter(
@@ -678,7 +648,27 @@ with tab_dashboard:
                 )
             )
     
-        # --- Límites legales ---
+            # ---------- EMA 7 analíticas ----------
+            if mostrar_ema and not df_p.empty:
+                df_p["EMA7"] = (
+                    df_p[param_sel]
+                    .ewm(span=7, adjust=False)
+                    .mean()
+                )
+    
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_p["datetime"],
+                        y=df_p["EMA7"],
+                        mode="lines",
+                        name="EMA 7",
+                        line=dict(color="#F58518", width=3)
+                    )
+                )
+    
+        # -------------------------------------------------
+        # Límites legales
+        # -------------------------------------------------
         if param_sel in LIMITES:
             fig.add_hline(
                 y=LIMITES[param_sel]["anual"],
@@ -687,6 +677,7 @@ with tab_dashboard:
                 annotation_text="Límite anual",
                 annotation_position="top left"
             )
+    
             fig.add_hline(
                 y=LIMITES[param_sel]["puntual"],
                 line_dash="dash",
@@ -695,29 +686,35 @@ with tab_dashboard:
                 annotation_position="top left"
             )
     
+        # -------------------------------------------------
+        # Layout
+        # -------------------------------------------------
         fig.update_layout(
             height=450,
             margin=dict(l=40, r=40, t=40, b=40),
             xaxis_title="Fecha",
             yaxis_title=param_sel,
             legend_title="Punto",
+            hovermode="x unified"
         )
     
         st.plotly_chart(fig, use_container_width=True)
-
+    
     else:
         st.info("No hay datos para el gráfico")
-
-      # ---------- ESTADO DIARIO MENSUAL ----------
+    
+    # -------------------------------------------------
+    # ESTADO DIARIO MENSUAL
+    # -------------------------------------------------
     with st.expander("📅 Estado diario de la planta (mes)"):
         df_salida = df[df["punto"] == "Salida FCA"]
         df_mes = analitica_valida_salida_fca(df_salida)
-
+    
         if not df_mes.empty:
             df_mes["Estado"] = df_mes.apply(
                 lambda r: estado_global(r["HC"], r["DQO"]), axis=1
             )
-
+    
             st.dataframe(
                 df_mes[["dia", "HC", "DQO", "Estado"]]
                 .sort_values("dia", ascending=False),
@@ -725,7 +722,7 @@ with tab_dashboard:
             )
         else:
             st.info("No hay datos para el mes")
-
+    
     st.divider()
     
 # =====================================================
