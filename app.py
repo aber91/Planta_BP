@@ -909,7 +909,29 @@ with tab_dashboard:
         Diagnóstico automático de filtros FCA
         Basado en tendencia reciente (EMA7) y eficiencia real
         """
+
+    # -------------------------------------------------
+    # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
+    # -------------------------------------------------
+    diag = diagnostico_filtros_fca(df_plot, param_sel)
     
+    if diag:
+        st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
+    
+        if diag["estado"].startswith("🔴"):
+            st.error(f"{diag['estado']}\n\n{diag['mensaje']}")
+        elif diag["estado"].startswith("🟠"):
+            st.warning(f"{diag['estado']}\n\n{diag['mensaje']}")
+        else:
+            st.success(f"{diag['estado']}\n\n{diag['mensaje']}")
+    
+        if diag["motivos"]:
+            st.markdown("**Motivos detectados:**")
+            for m in diag["motivos"]:
+                st.markdown(f"- {m}")
+    else:
+        st.info("No hay datos suficientes para el diagnóstico automático.")
+           
         resultado = {
             "estado": "🟢 Normal",
             "mensaje": "Funcionamiento dentro de parámetros normales.",
