@@ -748,7 +748,9 @@ with tab_dashboard:
     # Eficiencias
     # -------------------------------------------------
     
-    st.markdown("### 🧪 Eficiencia de eliminación diaria")
+    st.markdown(f"### 🧪 Eficiencia de eliminación diaria – {param_sel}")
+    st.caption(f"Porcentaje de eliminación de {param_sel} · cálculo diario")
+
     df_eff = calcular_eficiencias_diarias(df_plot, param_sel)
     
     if not df_eff.empty:
