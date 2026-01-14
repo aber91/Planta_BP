@@ -5,4 +5,3 @@ reportlab
 openpyxl
 matplotlib
 plotly
-calendar
