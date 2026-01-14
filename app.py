@@ -116,8 +116,9 @@ def estado_global(hc, dqo):
 # =====================================================
 # PESTAÑAS
 # =====================================================
-tab_estado, tab_dashboard, tab_gestion = st.tabs(
-    ["🟢 Estado planta", "📊 Dashboard", "🛠️ Gestión de datos"]
+
+tab_dashboard, tab_gestion = st.tabs(
+    ["📊 Dashboard", "🛠️ Gestión de datos"]
 )
 
 # =====================================================
@@ -179,6 +180,40 @@ with tab_dashboard:
                 c1.metric("HC medio", f"{df_val['HC'].mean():.2f}")
                 c2.metric("DQO medio", f"{df_val['DQO'].mean():.2f}")
 
+    st.subheader("Estado HOY – Salida FCA")
+        hoy = date.today()
+    
+        df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
+    
+        if not df_hoy.empty:
+            fila = analitica_valida_salida_fca(df_hoy).iloc[0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("HC", fila["HC"])
+            c2.metric("DQO", fila["DQO"])
+            c3.metric("SS", fila["SS"])
+            c4.metric("Sulf", fila["Sulf"])
+            st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
+        else:
+            st.warning("No hay analítica para hoy")
+    
+        st.divider()
+        with st.expander("📅 Estado diario de la planta (mes)"):
+    df_salida = df[df["punto"] == "Salida FCA"]
+    df_mes = analitica_valida_salida_fca(df_salida)
+
+    if not df_mes.empty:
+        df_mes["Estado"] = df_mes.apply(
+            lambda r: estado_global(r["HC"], r["DQO"]), axis=1
+        )
+
+        st.dataframe(
+            df_mes[["dia", "HC", "DQO", "Estado"]]
+            .sort_values("dia", ascending=False),
+            use_container_width=True
+        )
+    else:
+        st.info("No hay datos para el mes")
+    
     st.divider()
     punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
     parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
