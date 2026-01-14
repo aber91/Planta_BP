@@ -991,9 +991,10 @@ with tab_dashboard:
                 "Tendencia reciente al alza",
                 "Ligera caída de eficiencia"
             ]
-    
-    return none
-       
+            
+        if df_salida.empty or len(df_salida) < 7:
+        return None
+      
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
     # -------------------------------------------------
