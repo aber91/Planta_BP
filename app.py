@@ -317,13 +317,22 @@ with tab_dashboard:
 
                 prom_acum = prom_mensual.expanding().mean()
 
+                # --------- PROYECCIÓN UPA PROGRESIVA ---------
                 proy = prom_acum.copy()
                 ultimo_mes = prom_acum.last_valid_index()
-
+                
                 if ultimo_mes:
-                    valor_upa = upa_hc if parametro == "HC" else upa_dqo
+                    # Valor estimado mensual
+                    est = est_hc if parametro == "HC" else est_dqo
+                
+                    # Suma real acumulada hasta el último mes
+                    suma_real = prom_mensual.loc[:ultimo_mes].sum()
+                    n_real = ultimo_mes
+                
                     for m in range(ultimo_mes + 1, 13):
-                        proy.loc[m] = valor_upa
+                        suma_real += est
+                        n_real += 1
+                        proy.loc[m] = suma_real / n_real
 
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
