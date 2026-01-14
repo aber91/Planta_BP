@@ -278,7 +278,7 @@ with tab_dashboard:
             )
         )
 
-        if not df_plot.empty:
+    if not df_plot.empty:
     
         fig = go.Figure()
     
