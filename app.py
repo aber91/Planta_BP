@@ -9,6 +9,7 @@ import os
 import sqlite3
 import altair as alt
 import plotly.graph_objects as go
+import calendar
 
 # =====================================================
 # CONFIGURACIÓN GENERAL
@@ -182,157 +183,160 @@ tab_dashboard, tab_gestion = st.tabs(
 
 with tab_dashboard:
 
-   # =====================================================
-    # 📊 DASHBOARD – CONTROL + EVOLUCIÓN ANUAL
-    # =====================================================
-    
-    import plotly.graph_objects as go
-    from datetime import date
-    import calendar
-    
+# =====================================================
+# 📊 DASHBOARD – CONTROL + UPA + EVOLUCIÓN ANUAL
+# =====================================================
+
     st.subheader("📊 Dashboard – Control anual de la planta")
-    
-    # =====================================================
-    # PREPARACIÓN DE DATOS BASE (Salida FCA)
-    # =====================================================
+
+    # -------------------------------------------------
+    # Preparación de datos base (Salida FCA)
+    # -------------------------------------------------
     df_salida = df[df["punto"] == "Salida FCA"].copy()
-    
+
     if df_salida.empty or df_envio.empty:
         st.info("No hay datos suficientes para mostrar el dashboard.")
     else:
-        # Última analítica válida diaria
         df_val = analitica_valida_salida_fca(df_salida)
-    
-        # Solo días con envío a emisario
+
         dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
         df_val = df_val[df_val["dia"].isin(dias_envio)]
-    
+
         if df_val.empty:
             st.warning("No hay analíticas válidas con envío a emisario.")
         else:
             hoy = date.today()
             anio = hoy.year
             mes_actual = hoy.month
-    
-            # =====================================================
-            # LAYOUT 2 COLUMNAS
-            # =====================================================
-            col_left, col_right = st.columns([1, 1])
-    
-            # =====================================================
-            # 🟦 COLUMNA IZQUIERDA – ACUMULADOS + UPA
-            # =====================================================
+
+            # =================================================
+            # LAYOUT PRINCIPAL (IZQ + DERECHA)
+            # =================================================
+            col_left, col_graph = st.columns([1, 1])
+
+            # =================================================
+            # 🟦 COLUMNA IZQUIERDA (2 SUBCOLUMNAS)
+            # =================================================
             with col_left:
-                st.markdown("### 📐 Control acumulado y previsión anual")
-                st.caption("Salida FCA · solo días con envío a emisario")
-    
-                # --------- ACUMULADOS ---------
-                df_anual = df_val[df_val["dia"].apply(lambda d: d.year) == anio]
-                df_mes = df_anual[df_anual["dia"].apply(lambda d: d.month) == mes_actual]
-    
-                hc_mes = df_mes["HC"].mean() if not df_mes.empty else None
-                dqo_mes = df_mes["DQO"].mean() if not df_mes.empty else None
-                hc_anual = df_anual["HC"].mean() if not df_anual.empty else None
-                dqo_anual = df_anual["DQO"].mean() if not df_anual.empty else None
-    
-                st.markdown("#### HC (ppm)")
-                st.metric("Mes actual", valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"]))
-                st.metric("Año acumulado", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
-    
-                st.markdown("#### DQO (ppm)")
-                st.metric("Mes actual", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
-                st.metric("Año acumulado", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
-    
-                st.divider()
-    
-                # --------- UPA ---------
-                st.markdown("### 🔮 UPA – Última previsión anual")
-    
-                dias_transcurridos = len(df_anual)
-                dias_totales = 365
-                dias_restantes = max(dias_totales - dias_transcurridos, 0)
-    
-                if dias_transcurridos == 0:
-                    st.info("No hay suficientes datos para calcular la UPA.")
-                else:
-                    est_hc = st.number_input(
-                        "Estimado HC medio hasta fin de año (ppm)",
-                        min_value=0.0,
-                        value=float(hc_anual) if hc_anual else 0.0,
-                        step=0.1
-                    )
-    
-                    est_dqo = st.number_input(
-                        "Estimado DQO medio hasta fin de año (ppm)",
-                        min_value=0.0,
-                        value=float(dqo_anual) if dqo_anual else 0.0,
-                        step=1.0
-                    )
-    
-                    upa_hc = calcular_upa(hc_anual, dias_transcurridos, est_hc, dias_restantes)
-                    upa_dqo = calcular_upa(dqo_anual, dias_transcurridos, est_dqo, dias_restantes)
-    
-                    margen_hc = LIMITES["HC"]["anual"] - upa_hc if upa_hc else None
-                    margen_dqo = LIMITES["DQO"]["anual"] - upa_dqo if upa_dqo else None
-    
-                    st.metric(
-                        "UPA HC",
-                        valor_con_semaforo(upa_hc, "ppm", LIMITES["HC"]["anual"])
-                    )
-                    if margen_hc is not None:
-                        st.markdown(texto_margen(margen_hc))
-    
-                    st.metric(
-                        "UPA DQO",
-                        valor_con_semaforo(upa_dqo, "ppm", LIMITES["DQO"]["anual"])
-                    )
-                    if margen_dqo is not None:
-                        st.markdown(texto_margen(margen_dqo))
-    
-            # =====================================================
-            # 🟩 COLUMNA DERECHA – GRÁFICO ANUAL (PLOTLY)
-            # =====================================================
-            with col_right:
+                col_acc, col_upa = st.columns([1, 1])
+
+                # =============================================
+                # 📐 ACUMULADOS
+                # =============================================
+                with col_acc:
+                    st.markdown("### 📐 Acumulados")
+                    st.caption("Salida FCA · días con envío a emisario")
+
+                    df_anual = df_val[df_val["dia"].apply(lambda d: d.year) == anio]
+                    df_mes = df_anual[df_anual["dia"].apply(lambda d: d.month) == mes_actual]
+
+                    hc_mes = df_mes["HC"].mean() if not df_mes.empty else None
+                    dqo_mes = df_mes["DQO"].mean() if not df_mes.empty else None
+                    hc_anual = df_anual["HC"].mean() if not df_anual.empty else None
+                    dqo_anual = df_anual["DQO"].mean() if not df_anual.empty else None
+
+                    st.markdown("**HC (ppm)**")
+                    st.metric("Mes actual", valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"]))
+                    st.metric("Año acumulado", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
+
+                    st.markdown("**DQO (ppm)**")
+                    st.metric("Mes actual", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
+                    st.metric("Año acumulado", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
+
+                # =============================================
+                # 🔮 UPA
+                # =============================================
+                with col_upa:
+                    st.markdown("### 🔮 UPA")
+                    st.caption("Última previsión anual")
+
+                    dias_transcurridos = len(df_anual)
+                    dias_totales = 365
+                    dias_restantes = max(dias_totales - dias_transcurridos, 0)
+
+                    if dias_transcurridos == 0:
+                        st.info("No hay suficientes datos.")
+                    else:
+                        est_hc = st.number_input(
+                            "Estimado HC (ppm)",
+                            min_value=0.0,
+                            value=float(hc_anual) if hc_anual else 0.0,
+                            step=0.1,
+                            key="upa_hc"
+                        )
+
+                        est_dqo = st.number_input(
+                            "Estimado DQO (ppm)",
+                            min_value=0.0,
+                            value=float(dqo_anual) if dqo_anual else 0.0,
+                            step=1.0,
+                            key="upa_dqo"
+                        )
+
+                        upa_hc = calcular_upa(hc_anual, dias_transcurridos, est_hc, dias_restantes)
+                        upa_dqo = calcular_upa(dqo_anual, dias_transcurridos, est_dqo, dias_restantes)
+
+                        margen_hc = LIMITES["HC"]["anual"] - upa_hc if upa_hc else None
+                        margen_dqo = LIMITES["DQO"]["anual"] - upa_dqo if upa_dqo else None
+
+                        st.metric(
+                            "UPA HC",
+                            valor_con_semaforo(upa_hc, "ppm", LIMITES["HC"]["anual"])
+                        )
+                        if margen_hc is not None:
+                            st.markdown(texto_margen(margen_hc))
+
+                        st.metric(
+                            "UPA DQO",
+                            valor_con_semaforo(upa_dqo, "ppm", LIMITES["DQO"]["anual"])
+                        )
+                        if margen_dqo is not None:
+                            st.markdown(texto_margen(margen_dqo))
+
+            # =================================================
+            # 🟩 COLUMNA DERECHA – GRÁFICO ANUAL
+            # =================================================
+            with col_graph:
                 st.markdown("### 📈 Evolución anual")
-    
-                parametro = st.selectbox("Parámetro", ["HC", "DQO"], key="graf_anual_param")
-    
+
+                parametro = st.selectbox(
+                    "Parámetro",
+                    ["HC", "DQO"],
+                    key="graf_anual_param"
+                )
+
                 limite = LIMITES[parametro]["anual"]
-    
-                # --------- PROMEDIOS MENSUALES ---------
+
                 df_val["mes"] = df_val["dia"].apply(lambda d: d.month)
+
                 prom_mensual = (
                     df_val.groupby("mes")[parametro]
                     .mean()
                     .reindex(range(1, 13))
                 )
-    
-                meses = list(range(1, 13))
-                nombres_meses = [calendar.month_abbr[m] for m in meses]
-    
-                # --------- PROMEDIO ACUMULADO ---------
+
                 prom_acum = prom_mensual.expanding().mean()
-    
-                # --------- PROYECCIÓN UPA ---------
+
                 proy = prom_acum.copy()
                 ultimo_mes = prom_acum.last_valid_index()
+
                 if ultimo_mes:
                     valor_upa = upa_hc if parametro == "HC" else upa_dqo
                     for m in range(ultimo_mes + 1, 13):
                         proy.loc[m] = valor_upa
-    
-                # --------- GRÁFICO ---------
+
+                meses = list(range(1, 13))
+                nombres_meses = [calendar.month_abbr[m] for m in meses]
+
                 fig = go.Figure()
-    
-                # Columnas mensuales
+
                 fig.add_bar(
                     x=nombres_meses,
                     y=prom_mensual,
                     name="Promedio mensual",
                     marker_color="#4C78A8"
                 )
-    
-                # Línea acumulada real
+
                 fig.add_trace(go.Scatter(
                     x=nombres_meses,
                     y=prom_acum,
@@ -340,8 +344,7 @@ with tab_dashboard:
                     name="Promedio acumulado",
                     line=dict(width=3)
                 ))
-    
-                # Línea UPA (punteada)
+
                 fig.add_trace(go.Scatter(
                     x=nombres_meses,
                     y=proy,
@@ -349,8 +352,7 @@ with tab_dashboard:
                     name="Proyección UPA",
                     line=dict(width=3, dash="dash")
                 ))
-    
-                # Límite anual
+
                 fig.add_hline(
                     y=limite,
                     line_dash="dot",
@@ -358,17 +360,16 @@ with tab_dashboard:
                     annotation_text="Límite anual",
                     annotation_position="top left"
                 )
-    
+
                 fig.update_layout(
-                    height=500,
+                    height=520,
                     margin=dict(l=20, r=20, t=40, b=20),
                     yaxis_title="ppm",
                     legend=dict(orientation="h", y=-0.25)
                 )
-    
-                st.plotly_chart(fig, use_container_width=True)
 
-          
+                st.plotly_chart(fig, use_container_width=True)
+   
     # ---------- ESTADO HOY ----------
     st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
 
