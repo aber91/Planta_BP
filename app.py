@@ -905,75 +905,75 @@ with tab_dashboard:
     st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
     
     def diagnostico_filtros_fca(df_plot, parametro):
-    """
-    Diagnóstico automático de filtros FCA
-    Basado en tendencia reciente (EMA7) y eficiencia real
-    """
-
-    resultado = {
-        "estado": "🟢 Normal",
-        "mensaje": "Funcionamiento dentro de parámetros normales.",
-        "motivos": []
-    }
-
-    if parametro not in ["HC", "DQO"]:
+        """
+        Diagnóstico automático de filtros FCA
+        Basado en tendencia reciente (EMA7) y eficiencia real
+        """
+    
+        resultado = {
+            "estado": "🟢 Normal",
+            "mensaje": "Funcionamiento dentro de parámetros normales.",
+            "motivos": []
+        }
+    
+        if parametro not in ["HC", "DQO"]:
+            return resultado
+    
+        # ---------- SALIDA FCA ----------
+        df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
+        if df_salida.empty or len(df_salida) < 7:
+            return resultado
+    
+        df_salida = analitica_valida_salida_fca(df_salida)
+        df_salida = df_salida.sort_values("datetime")
+    
+        # ---------- EMA 7 ----------
+        df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
+        ema_diff = df_salida["EMA7"].diff().dropna()
+    
+        ema_diff_reciente = ema_diff.tail(5)
+        subidas_recientes = (ema_diff_reciente > 0).sum()
+    
+        # ---------- EFICIENCIA ----------
+        df_eff = calcular_eficiencias_diarias(df_plot, parametro)
+        eff_reciente = df_eff["E_X507_Salida"].dropna().tail(5)
+    
+        eff_media = eff_reciente.mean() if not eff_reciente.empty else None
+        eff_tendencia = eff_reciente.diff().mean() if len(eff_reciente) > 1 else 0
+    
+        # ---------- ENTRADA ESTABLE ----------
+        df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
+        entrada_estable = True
+        if not df_ent.empty:
+            ent_vals = df_ent.sort_values("datetime")[parametro].tail(5)
+            if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
+                entrada_estable = False
+    
+        # ---------- LÓGICA FINAL ----------
+        if (
+            subidas_recientes >= 3 and
+            eff_media is not None and eff_media < 60 and
+            eff_tendencia < 0 and
+            entrada_estable
+        ):
+            resultado["estado"] = "🔴 Posible limpieza de filtros"
+            resultado["mensaje"] = "Deriva negativa sostenida en salida FCA."
+            resultado["motivos"] = [
+                "Tendencia reciente ascendente en salida FCA (EMA 7)",
+                "Eficiencia en descenso en etapa X-507 → Salida FCA",
+                "Entrada estable"
+            ]
+    
+        elif subidas_recientes >= 2 and eff_tendencia < 0:
+            resultado["estado"] = "🟠 Vigilancia"
+            resultado["mensaje"] = "Se detectan señales tempranas de desviación."
+            resultado["motivos"] = [
+                "Tendencia reciente al alza",
+                "Ligera caída de eficiencia"
+            ]
+    
         return resultado
-
-    # ---------- SALIDA FCA ----------
-    df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
-    if df_salida.empty or len(df_salida) < 7:
-        return resultado
-
-    df_salida = analitica_valida_salida_fca(df_salida)
-    df_salida = df_salida.sort_values("datetime")
-
-    # ---------- EMA 7 ----------
-    df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
-    ema_diff = df_salida["EMA7"].diff().dropna()
-
-    ema_diff_reciente = ema_diff.tail(5)
-    subidas_recientes = (ema_diff_reciente > 0).sum()
-
-    # ---------- EFICIENCIA ----------
-    df_eff = calcular_eficiencias_diarias(df_plot, parametro)
-    eff_reciente = df_eff["E_X507_Salida"].dropna().tail(5)
-
-    eff_media = eff_reciente.mean() if not eff_reciente.empty else None
-    eff_tendencia = eff_reciente.diff().mean() if len(eff_reciente) > 1 else 0
-
-    # ---------- ENTRADA ESTABLE ----------
-    df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
-    entrada_estable = True
-    if not df_ent.empty:
-        ent_vals = df_ent.sort_values("datetime")[parametro].tail(5)
-        if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
-            entrada_estable = False
-
-    # ---------- LÓGICA FINAL ----------
-    if (
-        subidas_recientes >= 3 and
-        eff_media is not None and eff_media < 60 and
-        eff_tendencia < 0 and
-        entrada_estable
-    ):
-        resultado["estado"] = "🔴 Posible limpieza de filtros"
-        resultado["mensaje"] = "Deriva negativa sostenida en salida FCA."
-        resultado["motivos"] = [
-            "Tendencia reciente ascendente en salida FCA (EMA 7)",
-            "Eficiencia en descenso en etapa X-507 → Salida FCA",
-            "Entrada estable"
-        ]
-
-    elif subidas_recientes >= 2 and eff_tendencia < 0:
-        resultado["estado"] = "🟠 Vigilancia"
-        resultado["mensaje"] = "Se detectan señales tempranas de desviación."
-        resultado["motivos"] = [
-            "Tendencia reciente al alza",
-            "Ligera caída de eficiencia"
-        ]
-
-    return resultado
-   
+       
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
     # -------------------------------------------------
