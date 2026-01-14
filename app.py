@@ -269,23 +269,62 @@ with tab_gestion:
                 st.success("Envío a emisario actualizado")
 
     # ---------- IMPORTACIÓN XLSX ----------
-    with st.expander("📥 Importación de datos XLSX"):
-        st.info("Archivos esperados en /data")
-        if st.button("Importar XLSX"):
-            st.success("Importación ejecutada")
+with st.expander("📥 Importación de datos XLSX"):
+    st.info("Archivos esperados en /data")
 
-    # ---------- BACKUP ----------
-    with st.expander("💾 Copia de seguridad de la BBDD"):
-        with open(DB_PATH, "rb") as f:
-            st.download_button(
-                "📥 Descargar backup",
-                data=f,
-                file_name="planta_backup.db"
+    archivos = {
+        "entrada_planta.xlsx": "Entrada Planta",
+        "x507.xlsx": "X-507",
+        "salidafca.xlsx": "Salida FCA",
+    }
+
+    if st.button("Importar XLSX"):
+        total_insertados = 0
+
+        for archivo, punto in archivos.items():
+            ruta = os.path.join("data", archivo)
+            if not os.path.exists(ruta):
+                st.warning(f"No encontrado: {archivo}")
+                continue
+
+            df_xls = pd.read_excel(
+                ruta,
+                engine="openpyxl",
+                usecols="C:H",
+                names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+                header=None,
+                skiprows=1,
             )
 
-        uploaded_db = st.file_uploader("Restaurar backup (.db)", type=["db"])
-        if uploaded_db:
-            with open(DB_PATH, "wb") as f:
-                f.write(uploaded_db.read())
-            st.success("Base de datos restaurada")
+            for _, r in df_xls.iterrows():
+                try:
+                    dt = datetime.combine(
+                        pd.to_datetime(r["Fecha"]).date(),
+                        pd.to_datetime(r["Hora"]).time(),
+                    )
+                    dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    continue
+
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO analiticas
+                    (datetime, punto, HC, SS, DQO, Sulf)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        dt_str,
+                        punto,
+                        r["HC"],
+                        r["SS"],
+                        r["DQO"],
+                        r["Sulf"],
+                    ),
+                )
+                total_insertados += 1
+
+        conn.commit()
+        st.success(f"Importación completada: {total_insertados} registros procesados")
+        st.rerun()
+
 
