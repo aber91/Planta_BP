@@ -974,7 +974,26 @@ with tab_dashboard:
     
         return resultado
 
+    # -------------------------------------------------
+    # 🧠 MOSTRAR RESULTADO DEL DIAGNÓSTICO
+    # -------------------------------------------------
+    diag = diagnostico_filtros_fca(df_plot, param_sel)
     
+    if diag is None:
+        st.info("No hay datos suficientes para el diagnóstico automático.")
+    else:
+        if diag["estado"].startswith("🔴"):
+            st.error(f"{diag['estado']}\n\n{diag['mensaje']}")
+        elif diag["estado"].startswith("🟠"):
+            st.warning(f"{diag['estado']}\n\n{diag['mensaje']}")
+        else:
+            st.success(f"{diag['estado']}\n\n{diag['mensaje']}")
+    
+        if diag.get("motivos"):
+            st.markdown("**Motivos detectados:**")
+            for m in diag["motivos"]:
+                st.markdown(f"- {m}")
+
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================
