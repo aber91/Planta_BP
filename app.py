@@ -12,9 +12,22 @@ import altair as alt
 # =====================================================
 # CONFIGURACIÓN GENERAL
 # =====================================================
-PERSISTENT_DIR = "/mount/data"
+
+# PERSISTENCIA ROBUSTA (STREAMLIT CLOUD SAFE)
+
+if os.path.isdir("/mount/data"):
+    PERSISTENT_DIR = "/mount/data"
+else:
+    PERSISTENT_DIR = "data"
+    os.makedirs(PERSISTENT_DIR, exist_ok=True)
+
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 
+@st.cache_resource
+def get_conn():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+conn = get_conn()
 
 PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
@@ -30,15 +43,6 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # =====================================================
 # BASE DE DATOS
 # =====================================================
-# Asegurar que el archivo existe
-if not os.path.exists(DB_PATH):
-    open(DB_PATH, "a").close()
-    
-@st.cache_resource
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
-conn = get_conn()
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS analiticas (
