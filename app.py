@@ -197,39 +197,40 @@ with tab_dashboard:
         st.warning("No hay analítica para hoy")
 
     st.divider()
-    with st.expander("📅 Estado diario de la planta (mes)"):
-    df_salida = df[df["punto"] == "Salida FCA"]
-    df_mes = analitica_valida_salida_fca(df_salida)
-
-    if not df_mes.empty:
-        df_mes["Estado"] = df_mes.apply(
-            lambda r: estado_global(r["HC"], r["DQO"]), axis=1
-        )
-
-        st.dataframe(
-            df_mes[["dia", "HC", "DQO", "Estado"]]
-            .sort_values("dia", ascending=False),
-            use_container_width=True
-        )
-    else:
-        st.info("No hay datos para el mes")
     
-    st.divider()
-    punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
-    parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
+    with st.expander("📅 Estado diario de la planta (mes)"):
+        df_salida = df[df["punto"] == "Salida FCA"]
+        df_mes = analitica_valida_salida_fca(df_salida)
+        
+        if not df_mes.empty:
+            df_mes["Estado"] = df_mes.apply(
+                lambda r: estado_global(r["HC"], r["DQO"]), axis=1
+            )
+        
+            st.dataframe(
+                df_mes[["dia", "HC", "DQO", "Estado"]]
+                .sort_values("dia", ascending=False),
+                use_container_width=True
+            )
+        else:
+            st.info("No hay datos para el mes")
+        
+        st.divider()
+        punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
+        parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
+        
+        df_g = df[df["punto"] == punto]
+        if punto == "Salida FCA":
+            df_g = analitica_valida_salida_fca(df_g)
 
-    df_g = df[df["punto"] == punto]
-    if punto == "Salida FCA":
-        df_g = analitica_valida_salida_fca(df_g)
-
-    if not df_g.empty:
-        st.altair_chart(
-            alt.Chart(df_g).mark_line(point=True).encode(
-                x="datetime:T",
-                y=f"{parametro}:Q"
-            ),
-            use_container_width=True
-        )
+        if not df_g.empty:
+            st.altair_chart(
+                alt.Chart(df_g).mark_line(point=True).encode(
+                    x="datetime:T",
+                    y=f"{parametro}:Q"
+                ),
+                use_container_width=True
+            )
 
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
