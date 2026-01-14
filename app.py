@@ -1,5 +1,5 @@
 # =====================================================
-# app.py – v2.5 COMPLETO Y ESTABLE
+# app.py – v2.6 COMPLETO, ESTABLE Y UX LIMPIO
 # =====================================================
 
 import streamlit as st
@@ -13,8 +13,7 @@ import altair as alt
 # CONFIGURACIÓN GENERAL
 # =====================================================
 
-# PERSISTENCIA ROBUSTA (STREAMLIT CLOUD SAFE)
-
+# Persistencia robusta (Streamlit Cloud / local)
 if os.path.isdir("/mount/data"):
     PERSISTENT_DIR = "/mount/data"
 else:
@@ -34,7 +33,7 @@ PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
 
 LIMITES = {
     "HC": {"puntual": 15, "anual": 2.5},
-    "DQO": {"puntual": 700, "anual": 125}
+    "DQO": {"puntual": 700, "anual": 125},
 }
 
 st.set_page_config(page_title="Control de analíticas", layout="wide")
@@ -69,6 +68,7 @@ conn.commit()
 # =====================================================
 # CARGA DE DATOS
 # =====================================================
+
 df = pd.read_sql("SELECT * FROM analiticas", conn, parse_dates=["datetime"])
 if not df.empty:
     df["dia"] = df["datetime"].dt.date
@@ -82,6 +82,7 @@ if not df_envio.empty:
 # =====================================================
 # FUNCIONES DE NEGOCIO
 # =====================================================
+
 def analitica_valida_salida_fca(df_in):
     resultados = []
 
@@ -104,6 +105,7 @@ def analitica_valida_salida_fca(df_in):
 
     return pd.DataFrame(resultados)
 
+
 def estado_global(hc, dqo):
     if pd.isna(hc) or pd.isna(dqo):
         return "⚪ Sin dato"
@@ -122,67 +124,36 @@ tab_dashboard, tab_gestion = st.tabs(
 )
 
 # =====================================================
-# 🟢 ESTADO DE LA PLANTA
+# 📊 DASHBOARD (TODO INTEGRADO AQUÍ)
 # =====================================================
-with tab_estado:
-    st.subheader("Estado HOY – Salida FCA")
-    hoy = date.today()
 
-    df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
-
-    if not df_hoy.empty:
-        fila = analitica_valida_salida_fca(df_hoy).iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("HC", fila["HC"])
-        c2.metric("DQO", fila["DQO"])
-        c3.metric("SS", fila["SS"])
-        c4.metric("Sulf", fila["Sulf"])
-        st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
-    else:
-        st.warning("No hay analítica para hoy")
-
-    st.divider()
-    st.subheader("📅 Estado diario del mes")
-
-    df_salida = df[df["punto"] == "Salida FCA"]
-    df_mes = analitica_valida_salida_fca(df_salida)
-
-    if not df_mes.empty:
-        df_mes["Estado"] = df_mes.apply(
-            lambda r: estado_global(r["HC"], r["DQO"]), axis=1
-        )
-        st.dataframe(
-            df_mes[["dia", "HC", "DQO", "Estado"]]
-            .sort_values("dia", ascending=False),
-            use_container_width=True
-        )
-
-# =====================================================
-# 📊 DASHBOARD
-# =====================================================
 with tab_dashboard:
+
+    # ---------- PROMEDIO MENSUAL ----------
     st.subheader("📐 Promedio mensual – Salida FCA")
 
     if df.empty:
         st.info("No hay analíticas")
+    elif df_envio.empty or df_envio["envio_emisario"].sum() == 0:
+        st.warning("No hay días marcados como envío a emisario")
     else:
-        if df_envio.empty or df_envio["envio_emisario"].sum() == 0:
-            st.warning("No hay días marcados como envío a emisario")
-        else:
-            dias_env = df_envio[df_envio["envio_emisario"] == 1]["dia"]
-            df_val = analitica_valida_salida_fca(
-                df[df["punto"] == "Salida FCA"]
-            )
-            df_val = df_val[df_val["dia"].isin(dias_env)]
+        dias_env = df_envio[df_envio["envio_emisario"] == 1]["dia"]
+        df_val = analitica_valida_salida_fca(
+            df[df["punto"] == "Salida FCA"]
+        )
+        df_val = df_val[df_val["dia"].isin(dias_env)]
 
-            if not df_val.empty:
-                c1, c2 = st.columns(2)
-                c1.metric("HC medio", f"{df_val['HC'].mean():.2f}")
-                c2.metric("DQO medio", f"{df_val['DQO'].mean():.2f}")
+        if not df_val.empty:
+            c1, c2 = st.columns(2)
+            c1.metric("HC medio", f"{df_val['HC'].mean():.2f}")
+            c2.metric("DQO medio", f"{df_val['DQO'].mean():.2f}")
 
-    st.subheader("Estado HOY – Salida FCA")
+    st.divider()
+
+    # ---------- ESTADO HOY ----------
+    st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
+
     hoy = date.today()
-
     df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
 
     if not df_hoy.empty:
@@ -197,44 +168,52 @@ with tab_dashboard:
         st.warning("No hay analítica para hoy")
 
     st.divider()
-    
+
+    # ---------- ESTADO DIARIO MENSUAL ----------
     with st.expander("📅 Estado diario de la planta (mes)"):
         df_salida = df[df["punto"] == "Salida FCA"]
         df_mes = analitica_valida_salida_fca(df_salida)
-        
+
         if not df_mes.empty:
             df_mes["Estado"] = df_mes.apply(
                 lambda r: estado_global(r["HC"], r["DQO"]), axis=1
             )
-        
+
             st.dataframe(
                 df_mes[["dia", "HC", "DQO", "Estado"]]
                 .sort_values("dia", ascending=False),
-                use_container_width=True
+                use_container_width=True,
             )
         else:
             st.info("No hay datos para el mes")
-        
-        st.divider()
-        punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
-        parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
-        
-        df_g = df[df["punto"] == punto]
-        if punto == "Salida FCA":
-            df_g = analitica_valida_salida_fca(df_g)
 
-        if not df_g.empty:
-            st.altair_chart(
-                alt.Chart(df_g).mark_line(point=True).encode(
-                    x="datetime:T",
-                    y=f"{parametro}:Q"
-                ),
-                use_container_width=True
-            )
+    st.divider()
+
+    # ---------- GRÁFICOS ----------
+    st.subheader("📈 Gráficos")
+
+    punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
+    parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
+
+    df_g = df[df["punto"] == punto]
+    if punto == "Salida FCA":
+        df_g = analitica_valida_salida_fca(df_g)
+
+    if not df_g.empty:
+        st.altair_chart(
+            alt.Chart(df_g).mark_line(point=True).encode(
+                x="datetime:T",
+                y=f"{parametro}:Q"
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.info("No hay datos para el gráfico")
 
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================
+
 with tab_gestion:
 
     # ---------- INTRODUCCIÓN MANUAL ----------
@@ -247,7 +226,6 @@ with tab_gestion:
 
         hc = c2.number_input("HC")
         ss = c2.number_input("SS")
-
         dqo = c3.number_input("DQO")
         sulf = c3.number_input("Sulf")
 
@@ -259,7 +237,7 @@ with tab_gestion:
                 (datetime, punto, HC, SS, DQO, Sulf)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (dt, punto, hc, ss, dqo, sulf)
+                (dt, punto, hc, ss, dqo, sulf),
             )
             conn.commit()
             st.success("Analítica guardada")
@@ -270,7 +248,7 @@ with tab_gestion:
             df_edit = st.data_editor(
                 df.drop(columns=["dia"]),
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
             )
 
             if st.button("Guardar cambios en tabla"):
@@ -293,7 +271,7 @@ with tab_gestion:
             tabla_edit = st.data_editor(
                 tabla_env,
                 hide_index=True,
-                use_container_width=True
+                use_container_width=True,
             )
 
             if st.button("Guardar envío a emisario"):
@@ -307,22 +285,22 @@ with tab_gestion:
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
         st.info("Archivos esperados en /data")
-    
+
         archivos = {
             "entrada_planta.xlsx": "Entrada Planta",
             "x507.xlsx": "X-507",
             "salidafca.xlsx": "Salida FCA",
         }
-    
+
         if st.button("Importar XLSX"):
             total_insertados = 0
-    
+
             for archivo, punto in archivos.items():
                 ruta = os.path.join("data", archivo)
                 if not os.path.exists(ruta):
                     st.warning(f"No encontrado: {archivo}")
                     continue
-    
+
                 df_xls = pd.read_excel(
                     ruta,
                     engine="openpyxl",
@@ -331,7 +309,7 @@ with tab_gestion:
                     header=None,
                     skiprows=1,
                 )
-    
+
                 for _, r in df_xls.iterrows():
                     try:
                         dt = datetime.combine(
@@ -341,7 +319,7 @@ with tab_gestion:
                         dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
                         continue
-    
+
                     conn.execute(
                         """
                         INSERT OR REPLACE INTO analiticas
@@ -358,9 +336,9 @@ with tab_gestion:
                         ),
                     )
                     total_insertados += 1
-    
+
             conn.commit()
-            st.success(f"Importación completada: {total_insertados} registros procesados")
+            st.success(
+                f"Importación completada: {total_insertados} registros procesados"
+            )
             st.rerun()
-
-
