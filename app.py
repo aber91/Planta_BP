@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS envio_emisario (
 
 conn.commit()
 
+conn.execute("""
+CREATE TABLE IF NOT EXISTS estimados_upa (
+    anio INTEGER,
+    parametro TEXT,
+    valor REAL,
+    PRIMARY KEY (anio, parametro)
+)
+""")
+conn.commit()
+
 # =====================================================
 # CARGA DE DATOS
 # =====================================================
@@ -80,6 +90,21 @@ else:
 df_envio = pd.read_sql("SELECT * FROM envio_emisario", conn)
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+    
+# ----------------------------------------------
+# Cargar estimados UPA persistentes
+# ----------------------------------------------
+df_est = pd.read_sql(
+    "SELECT * FROM estimados_upa WHERE anio = ?",
+    conn,
+    params=(anio,)
+)
+
+def get_estimado(param):
+    fila = df_est[df_est["parametro"] == param]
+    if not fila.empty:
+        return float(fila.iloc[0]["valor"])
+    return None
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
@@ -248,47 +273,148 @@ with tab_dashboard:
                 # =============================================
                 with col_upa:
                     st.markdown("### 🔮 UPA")
-                    st.caption("Última previsión anual")
-
+                    st.caption("Última previsión anual · valores persistentes")
+                    
+                    # -------------------------------------------------
+                    # Crear tabla de estimados si no existe (seguridad)
+                    # -------------------------------------------------
+                    conn.execute("""
+                    CREATE TABLE IF NOT EXISTS estimados_upa (
+                        anio INTEGER,
+                        parametro TEXT,
+                        valor REAL,
+                        PRIMARY KEY (anio, parametro)
+                    )
+                    """)
+                    conn.commit()
+                    
+                    # -------------------------------------------------
+                    # Cargar estimados guardados para el año actual
+                    # -------------------------------------------------
+                    df_est = pd.read_sql(
+                        "SELECT * FROM estimados_upa WHERE anio = ?",
+                        conn,
+                        params=(anio,)
+                    )
+                    
+                    def get_estimado(param):
+                        fila = df_est[df_est["parametro"] == param]
+                        if not fila.empty:
+                            return float(fila.iloc[0]["valor"])
+                        return None
+                    
+                    # -------------------------------------------------
+                    # Días reales considerados
+                    # -------------------------------------------------
                     dias_transcurridos = len(df_anual)
                     dias_totales = 365
                     dias_restantes = max(dias_totales - dias_transcurridos, 0)
-
+                    
                     if dias_transcurridos == 0:
-                        st.info("No hay suficientes datos.")
+                        st.info("No hay suficientes datos para calcular la UPA.")
                     else:
+                        # -------------------------------------------------
+                        # Inputs persistentes
+                        # -------------------------------------------------
+                        est_hc_guardado = get_estimado("HC")
+                        est_dqo_guardado = get_estimado("DQO")
+                    
                         est_hc = st.number_input(
-                            "Estimado HC (ppm)",
+                            "Estimado HC medio hasta fin de año (ppm)",
                             min_value=0.0,
-                            value=float(hc_anual) if hc_anual else 0.0,
+                            value=(
+                                est_hc_guardado
+                                if est_hc_guardado is not None
+                                else float(hc_anual) if hc_anual else 0.0
+                            ),
                             step=0.1,
-                            key="upa_hc"
+                            key="upa_est_hc"
                         )
-
+                    
                         est_dqo = st.number_input(
-                            "Estimado DQO (ppm)",
+                            "Estimado DQO medio hasta fin de año (ppm)",
                             min_value=0.0,
-                            value=float(dqo_anual) if dqo_anual else 0.0,
+                            value=(
+                                est_dqo_guardado
+                                if est_dqo_guardado is not None
+                                else float(dqo_anual) if dqo_anual else 0.0
+                            ),
                             step=1.0,
-                            key="upa_dqo"
+                            key="upa_est_dqo"
                         )
-
-                        upa_hc = calcular_upa(hc_anual, dias_transcurridos, est_hc, dias_restantes)
-                        upa_dqo = calcular_upa(dqo_anual, dias_transcurridos, est_dqo, dias_restantes)
-
-                        margen_hc = LIMITES["HC"]["anual"] - upa_hc if upa_hc else None
-                        margen_dqo = LIMITES["DQO"]["anual"] - upa_dqo if upa_dqo else None
-
+                    
+                        # -------------------------------------------------
+                        # Guardar estimados automáticamente
+                        # -------------------------------------------------
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
+                            VALUES (?, ?, ?)
+                            """,
+                            (anio, "HC", est_hc)
+                        )
+                    
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
+                            VALUES (?, ?, ?)
+                            """,
+                            (anio, "DQO", est_dqo)
+                        )
+                    
+                        conn.commit()
+                    
+                        # -------------------------------------------------
+                        # Cálculo UPA
+                        # -------------------------------------------------
+                        upa_hc = calcular_upa(
+                            hc_anual,
+                            dias_transcurridos,
+                            est_hc,
+                            dias_restantes
+                        )
+                    
+                        upa_dqo = calcular_upa(
+                            dqo_anual,
+                            dias_transcurridos,
+                            est_dqo,
+                            dias_restantes
+                        )
+                    
+                        # -------------------------------------------------
+                        # Márgenes respecto al límite anual
+                        # -------------------------------------------------
+                        margen_hc = (
+                            LIMITES["HC"]["anual"] - upa_hc
+                            if upa_hc is not None else None
+                        )
+                    
+                        margen_dqo = (
+                            LIMITES["DQO"]["anual"] - upa_dqo
+                            if upa_dqo is not None else None
+                        )
+                    
+                        # -------------------------------------------------
+                        # Salida visual
+                        # -------------------------------------------------
                         st.metric(
-                            "UPA HC",
-                            valor_con_semaforo(upa_hc, "ppm", LIMITES["HC"]["anual"])
+                            "UPA HC (ppm)",
+                            valor_con_semaforo(
+                                upa_hc,
+                                "ppm",
+                                LIMITES["HC"]["anual"]
+                            )
                         )
                         if margen_hc is not None:
                             st.markdown(texto_margen(margen_hc))
-
+                    
                         st.metric(
-                            "UPA DQO",
-                            valor_con_semaforo(upa_dqo, "ppm", LIMITES["DQO"]["anual"])
+                            "UPA DQO (ppm)",
+                            valor_con_semaforo(
+                                upa_dqo,
+                                "ppm",
+                                LIMITES["DQO"]["anual"]
+                            )
                         )
                         if margen_dqo is not None:
                             st.markdown(texto_margen(margen_dqo))
