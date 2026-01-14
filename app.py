@@ -938,10 +938,7 @@ with tab_dashboard:
             "motivos": []
         }
     
-    if parametro not in ["HC", "DQO"]:
-            
-    return resultado
-    
+       
         # ---------- SALIDA FCA ----------
         df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
         if df_salida.empty or len(df_salida) < 7:
