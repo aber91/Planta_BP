@@ -252,10 +252,14 @@ with tab_dashboard:
         )
     
     # --- Bandas de límites ---
-    if param_sel in LIMITES:
+    if param_sel in LIMITES and not df_plot.empty:
+        x_min = df_plot["datetime"].min()
+        x_max = df_plot["datetime"].max()
+    
         limites_df = pd.DataFrame({
-            "y1": [LIMITES[param_sel]["anual"]],
-            "y2": [LIMITES[param_sel]["puntual"]],
+            "datetime": [x_min, x_max],
+            "y1": [LIMITES[param_sel]["anual"], LIMITES[param_sel]["anual"]],
+            "y2": [LIMITES[param_sel]["puntual"], LIMITES[param_sel]["puntual"]],
         })
     
         capas.insert(
@@ -264,10 +268,12 @@ with tab_dashboard:
                 opacity=0.2,
                 color="orange"
             ).encode(
-                y="y1",
-                y2="y2"
+                x="datetime:T",
+                y="y1:Q",
+                y2="y2:Q"
             )
         )
+
     
     if capas:
         st.altair_chart(
