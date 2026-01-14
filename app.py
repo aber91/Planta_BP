@@ -30,6 +30,10 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # =====================================================
 # BASE DE DATOS
 # =====================================================
+# Asegurar que el archivo existe
+if not os.path.exists(DB_PATH):
+    open(DB_PATH, "a").close()
+    
 @st.cache_resource
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
