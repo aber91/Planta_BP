@@ -13,8 +13,8 @@ import altair as alt
 # CONFIGURACIÓN GENERAL
 # =====================================================
 PERSISTENT_DIR = "/mount/data"
-os.makedirs(PERSISTENT_DIR, exist_ok=True)
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
+
 
 PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
