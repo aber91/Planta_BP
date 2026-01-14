@@ -274,12 +274,14 @@ with tab_dashboard:
             )
         )
 
-    
     if capas:
-        st.altair_chart(
-            alt.layer(*capas).resolve_scale(y="shared"),
-            use_container_width=True
-        )
+        chart = capas[0]
+        for c in capas[1:]:
+            chart = chart + c
+    
+        chart = chart.resolve_scale(y="shared")
+    
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No hay datos para el gráfico")
 
