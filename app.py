@@ -138,12 +138,12 @@ with tab_dashboard:
     if df.empty or df_envio.empty:
         st.info("No hay datos suficientes para calcular los promedios.")
     else:
-        # --- Analítica válida diaria de Salida FCA ---
+        # --- Última analítica válida diaria de Salida FCA ---
         df_val = analitica_valida_salida_fca(
             df[df["punto"] == "Salida FCA"]
         )
     
-        # --- Filtrar solo días con envío a emisario ---
+        # --- Solo días con envío a emisario ---
         dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
         df_val = df_val[df_val["dia"].isin(dias_envio)]
     
@@ -165,24 +165,101 @@ with tab_dashboard:
                 df_val["dia"].apply(lambda d: d.year) == anio_actual
             ]
     
+            # --- Valores ---
+            hc_mes = df_mes["HC"].mean() if not df_mes.empty else None
+            dqo_mes = df_mes["DQO"].mean() if not df_mes.empty else None
+            hc_anual = df_anual["HC"].mean() if not df_anual.empty else None
+            dqo_anual = df_anual["DQO"].mean() if not df_anual.empty else None
+    
             c1, c2, c3, c4 = st.columns(4)
     
             # --- Mensual ---
-            if not df_mes.empty:
-                c1.metric("HC medio mensual", f"{df_mes['HC'].mean():.2f}")
-                c2.metric("DQO medio mensual", f"{df_mes['DQO'].mean():.2f}")
-            else:
-                c1.metric("HC medio mensual", "—")
-                c2.metric("DQO medio mensual", "—")
+            c1.metric(
+                "HC medio mensual (ppm)",
+                f"{hc_mes:.2f}" if hc_mes is not None else "—",
+                semaforo_promedio(hc_mes, LIMITES["HC"]["anual"])
+            )
+            c2.metric(
+                "DQO medio mensual (ppm)",
+                f"{dqo_mes:.2f}" if dqo_mes is not None else "—",
+                semaforo_promedio(dqo_mes, LIMITES["DQO"]["anual"])
+            )
     
             # --- Anual ---
-            if not df_anual.empty:
-                c3.metric("HC medio anual", f"{df_anual['HC'].mean():.2f}")
-                c4.metric("DQO medio anual", f"{df_anual['DQO'].mean():.2f}")
-            else:
-                c3.metric("HC medio anual", "—")
-                c4.metric("DQO medio anual", "—")
+            c3.metric(
+                "HC medio anual (ppm)",
+                f"{hc_anual:.2f}" if hc_anual is not None else "—",
+                semaforo_promedio(hc_anual, LIMITES["HC"]["anual"])
+            )
+            c4.metric(
+                "DQO medio anual (ppm)",
+                f"{dqo_anual:.2f}" if dqo_anual is not None else "—",
+                semaforo_promedio(dqo_anual, LIMITES["DQO"]["anual"])
+            )
 
+    # =====================================================
+# 🔮 UPA – Última previsión anual
+# =====================================================
+st.divider()
+st.subheader("🔮 UPA – Última previsión anual (Salida FCA)")
+
+# --- Días con envío a emisario ya considerados ---
+df_anual_env = df_val.copy()
+
+dias_transcurridos = len(df_anual_env)
+dias_totales = 365
+dias_restantes = max(dias_totales - dias_transcurridos, 0)
+
+if dias_transcurridos == 0:
+    st.info("No hay suficientes datos para calcular la UPA.")
+else:
+    c1, c2 = st.columns(2)
+
+    with c1:
+        est_hc = st.number_input(
+            "Estimado HC medio hasta fin de año (ppm)",
+            min_value=0.0,
+            value=float(hc_anual) if hc_anual is not None else 0.0,
+            step=0.1
+        )
+
+    with c2:
+        est_dqo = st.number_input(
+            "Estimado DQO medio hasta fin de año (ppm)",
+            min_value=0.0,
+            value=float(dqo_anual) if dqo_anual is not None else 0.0,
+            step=1.0
+        )
+
+    upa_hc = calcular_upa(
+        hc_anual,
+        dias_transcurridos,
+        est_hc,
+        dias_restantes
+    )
+
+    upa_dqo = calcular_upa(
+        dqo_anual,
+        dias_transcurridos,
+        est_dqo,
+        dias_restantes
+    )
+
+    c3, c4 = st.columns(2)
+
+    c3.metric(
+        "UPA HC (ppm)",
+        f"{upa_hc:.2f}" if upa_hc is not None else "—",
+        semaforo_promedio(upa_hc, LIMITES["HC"]["anual"])
+    )
+
+    c4.metric(
+        "UPA DQO (ppm)",
+        f"{upa_dqo:.2f}" if upa_dqo is not None else "—",
+        semaforo_promedio(upa_dqo, LIMITES["DQO"]["anual"])
+    )
+
+    
     # ---------- ESTADO HOY ----------
     st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
 
