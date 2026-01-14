@@ -130,58 +130,58 @@ tab_dashboard, tab_gestion = st.tabs(
 
 with tab_dashboard:
 
-# =====================================================
-# 📐 HC y DQO acumulados – Salida FCA
-# =====================================================
-st.subheader("📐 HC y DQO acumulados – Salida FCA")
-
-if df.empty or df_envio.empty:
-    st.info("No hay datos suficientes para calcular los promedios.")
-else:
-    # --- Analítica válida diaria de Salida FCA ---
-    df_val = analitica_valida_salida_fca(
-        df[df["punto"] == "Salida FCA"]
-    )
-
-    # --- Filtrar solo días con envío a emisario ---
-    dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
-    df_val = df_val[df_val["dia"].isin(dias_envio)]
-
-    if df_val.empty:
-        st.warning("No hay días con envío a emisario y analítica válida.")
+    # =====================================================
+    # 📐 HC y DQO acumulados – Salida FCA
+    # =====================================================
+    st.subheader("📐 HC y DQO acumulados – Salida FCA")
+    
+    if df.empty or df_envio.empty:
+        st.info("No hay datos suficientes para calcular los promedios.")
     else:
-        hoy = date.today()
-        mes_actual = hoy.month
-        anio_actual = hoy.year
-
-        # --- Promedio acumulado mensual ---
-        df_mes = df_val[
-            (df_val["dia"].apply(lambda d: d.month) == mes_actual) &
-            (df_val["dia"].apply(lambda d: d.year) == anio_actual)
-        ]
-
-        # --- Promedio acumulado anual ---
-        df_anual = df_val[
-            df_val["dia"].apply(lambda d: d.year) == anio_actual
-        ]
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        # --- Mensual ---
-        if not df_mes.empty:
-            c1.metric("HC medio mensual", f"{df_mes['HC'].mean():.2f}")
-            c2.metric("DQO medio mensual", f"{df_mes['DQO'].mean():.2f}")
+        # --- Analítica válida diaria de Salida FCA ---
+        df_val = analitica_valida_salida_fca(
+            df[df["punto"] == "Salida FCA"]
+        )
+    
+        # --- Filtrar solo días con envío a emisario ---
+        dias_envio = df_envio[df_envio["envio_emisario"] == 1]["dia"]
+        df_val = df_val[df_val["dia"].isin(dias_envio)]
+    
+        if df_val.empty:
+            st.warning("No hay días con envío a emisario y analítica válida.")
         else:
-            c1.metric("HC medio mensual", "—")
-            c2.metric("DQO medio mensual", "—")
-
-        # --- Anual ---
-        if not df_anual.empty:
-            c3.metric("HC medio anual", f"{df_anual['HC'].mean():.2f}")
-            c4.metric("DQO medio anual", f"{df_anual['DQO'].mean():.2f}")
-        else:
-            c3.metric("HC medio anual", "—")
-            c4.metric("DQO medio anual", "—")
+            hoy = date.today()
+            mes_actual = hoy.month
+            anio_actual = hoy.year
+    
+            # --- Promedio acumulado mensual ---
+            df_mes = df_val[
+                (df_val["dia"].apply(lambda d: d.month) == mes_actual) &
+                (df_val["dia"].apply(lambda d: d.year) == anio_actual)
+            ]
+    
+            # --- Promedio acumulado anual ---
+            df_anual = df_val[
+                df_val["dia"].apply(lambda d: d.year) == anio_actual
+            ]
+    
+            c1, c2, c3, c4 = st.columns(4)
+    
+            # --- Mensual ---
+            if not df_mes.empty:
+                c1.metric("HC medio mensual", f"{df_mes['HC'].mean():.2f}")
+                c2.metric("DQO medio mensual", f"{df_mes['DQO'].mean():.2f}")
+            else:
+                c1.metric("HC medio mensual", "—")
+                c2.metric("DQO medio mensual", "—")
+    
+            # --- Anual ---
+            if not df_anual.empty:
+                c3.metric("HC medio anual", f"{df_anual['HC'].mean():.2f}")
+                c4.metric("DQO medio anual", f"{df_anual['DQO'].mean():.2f}")
+            else:
+                c3.metric("HC medio anual", "—")
+                c4.metric("DQO medio anual", "—")
 
     # ---------- ESTADO HOY ----------
     st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
