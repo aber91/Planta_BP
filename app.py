@@ -8,6 +8,7 @@ from datetime import datetime, date, timedelta
 import os
 import sqlite3
 import altair as alt
+import plotly.graph_objects as go
 
 # =====================================================
 # CONFIGURACIÓN GENERAL
