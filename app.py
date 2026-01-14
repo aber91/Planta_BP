@@ -169,26 +169,6 @@ with tab_dashboard:
 
     st.divider()
 
-    # ---------- ESTADO DIARIO MENSUAL ----------
-    with st.expander("📅 Estado diario de la planta (mes)"):
-        df_salida = df[df["punto"] == "Salida FCA"]
-        df_mes = analitica_valida_salida_fca(df_salida)
-
-        if not df_mes.empty:
-            df_mes["Estado"] = df_mes.apply(
-                lambda r: estado_global(r["HC"], r["DQO"]), axis=1
-            )
-
-            st.dataframe(
-                df_mes[["dia", "HC", "DQO", "Estado"]]
-                .sort_values("dia", ascending=False),
-                use_container_width=True,
-            )
-        else:
-            st.info("No hay datos para el mes")
-
-    st.divider()
-
     # ---------- GRÁFICOS ----------
     st.subheader("📈 Gráficos")
 
@@ -209,7 +189,28 @@ with tab_dashboard:
         )
     else:
         st.info("No hay datos para el gráfico")
+     
+    st.divider()
+      # ---------- ESTADO DIARIO MENSUAL ----------
+    with st.expander("📅 Estado diario de la planta (mes)"):
+        df_salida = df[df["punto"] == "Salida FCA"]
+        df_mes = analitica_valida_salida_fca(df_salida)
 
+        if not df_mes.empty:
+            df_mes["Estado"] = df_mes.apply(
+                lambda r: estado_global(r["HC"], r["DQO"]), axis=1
+            )
+
+            st.dataframe(
+                df_mes[["dia", "HC", "DQO", "Estado"]]
+                .sort_values("dia", ascending=False),
+                use_container_width=True,
+            )
+        else:
+            st.info("No hay datos para el mes")
+
+    st.divider()
+    
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
 # =====================================================
