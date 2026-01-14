@@ -169,28 +169,114 @@ with tab_dashboard:
 
     st.divider()
 
-    # ---------- GRÁFICOS ----------
-    st.subheader("📈 Gráficos")
-
-    punto = st.selectbox("Punto", PUNTOS, key="dash_punto")
-    parametro = st.selectbox("Parámetro", PARAMETROS, key="dash_param")
-
-    df_g = df[df["punto"] == punto]
-    if punto == "Salida FCA":
-        df_g = analitica_valida_salida_fca(df_g)
-
-    if not df_g.empty:
-        st.altair_chart(
-            alt.Chart(df_g).mark_line(point=True).encode(
+    # ---------- GRÁFICOS (MEJORADOS) ----------
+    st.subheader("📈 Análisis gráfico")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    
+    punto_sel = c1.selectbox(
+        "Punto",
+        ["Salida FCA", "Comparativo"],
+        index=0,
+        key="graf_punto"
+    )
+    
+    param_sel = c2.selectbox(
+        "Parámetro",
+        PARAMETROS,
+        index=PARAMETROS.index("HC"),
+        key="graf_param"
+    )
+    
+    periodo_sel = c3.selectbox(
+        "Periodo",
+        ["Últimos 7 días", "Últimos 30 días", "Mes actual", "Rango personalizado"],
+        index=1,
+        key="graf_periodo"
+    )
+    
+    f_ini = f_fin = None
+    if periodo_sel == "Rango personalizado":
+        f_ini = c4.date_input("Desde", key="graf_ini")
+        f_fin = c4.date_input("Hasta", key="graf_fin")
+    
+    # --- Filtrado por periodo ---
+    df_plot = df.copy()
+    now = datetime.now()
+    
+    if periodo_sel == "Últimos 7 días":
+        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=7)]
+    elif periodo_sel == "Últimos 30 días":
+        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=30)]
+    elif periodo_sel == "Mes actual":
+        df_plot = df_plot[df_plot["datetime"] >= now.replace(day=1)]
+    elif periodo_sel == "Rango personalizado" and f_ini and f_fin:
+        df_plot = df_plot[
+            (df_plot["datetime"] >= pd.to_datetime(f_ini)) &
+            (df_plot["datetime"] <= pd.to_datetime(f_fin))
+        ]
+    
+    capas = []
+    
+    # --- Líneas ---
+    if punto_sel == "Comparativo":
+        colores = {
+            "Entrada Planta": "steelblue",
+            "X-507": "darkorange",
+            "Salida FCA": "seagreen",
+        }
+        for p in PUNTOS:
+            df_p = df_plot[df_plot["punto"] == p]
+            if p == "Salida FCA":
+                df_p = analitica_valida_salida_fca(df_p)
+    
+            capas.append(
+                alt.Chart(df_p).mark_line(point=True).encode(
+                    x="datetime:T",
+                    y=f"{param_sel}:Q",
+                    color=alt.value(colores[p]),
+                    tooltip=["datetime:T", param_sel]
+                )
+            )
+    else:
+        df_p = df_plot[df_plot["punto"] == punto_sel]
+        if punto_sel == "Salida FCA":
+            df_p = analitica_valida_salida_fca(df_p)
+    
+        capas.append(
+            alt.Chart(df_p).mark_line(point=True).encode(
                 x="datetime:T",
-                y=f"{parametro}:Q"
-            ),
-            use_container_width=True,
+                y=f"{param_sel}:Q",
+                tooltip=["datetime:T", param_sel]
+            )
+        )
+    
+    # --- Bandas de límites ---
+    if param_sel in LIMITES:
+        limites_df = pd.DataFrame({
+            "y1": [LIMITES[param_sel]["anual"]],
+            "y2": [LIMITES[param_sel]["puntual"]],
+        })
+    
+        capas.insert(
+            0,
+            alt.Chart(limites_df).mark_area(
+                opacity=0.2,
+                color="orange"
+            ).encode(
+                y="y1",
+                y2="y2"
+            )
+        )
+    
+    if capas:
+        st.altair_chart(
+            alt.layer(*capas).resolve_scale(y="shared"),
+            use_container_width=True
         )
     else:
         st.info("No hay datos para el gráfico")
-     
-    st.divider()
+
       # ---------- ESTADO DIARIO MENSUAL ----------
     with st.expander("📅 Estado diario de la planta (mes)"):
         df_salida = df[df["punto"] == "Salida FCA"]
