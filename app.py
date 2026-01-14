@@ -181,23 +181,23 @@ with tab_dashboard:
                 c2.metric("DQO medio", f"{df_val['DQO'].mean():.2f}")
 
     st.subheader("Estado HOY – Salida FCA")
-        hoy = date.today()
-    
-        df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
-    
-        if not df_hoy.empty:
-            fila = analitica_valida_salida_fca(df_hoy).iloc[0]
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("HC", fila["HC"])
-            c2.metric("DQO", fila["DQO"])
-            c3.metric("SS", fila["SS"])
-            c4.metric("Sulf", fila["Sulf"])
-            st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
-        else:
-            st.warning("No hay analítica para hoy")
-    
-        st.divider()
-        with st.expander("📅 Estado diario de la planta (mes)"):
+    hoy = date.today()
+
+    df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
+
+    if not df_hoy.empty:
+        fila = analitica_valida_salida_fca(df_hoy).iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("HC", fila["HC"])
+        c2.metric("DQO", fila["DQO"])
+        c3.metric("SS", fila["SS"])
+        c4.metric("Sulf", fila["Sulf"])
+        st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
+    else:
+        st.warning("No hay analítica para hoy")
+
+    st.divider()
+    with st.expander("📅 Estado diario de la planta (mes)"):
     df_salida = df[df["punto"] == "Salida FCA"]
     df_mes = analitica_valida_salida_fca(df_salida)
 
