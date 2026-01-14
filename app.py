@@ -251,26 +251,30 @@ with tab_dashboard:
             )
         )
     
-    # --- Bandas de límites ---
+    # --- Límites legales como líneas horizontales (ESTABLE) ---
     if param_sel in LIMITES and not df_plot.empty:
-        x_min = df_plot["datetime"].min()
-        x_max = df_plot["datetime"].max()
-    
         limites_df = pd.DataFrame({
-            "datetime": [x_min, x_max],
-            "y1": [LIMITES[param_sel]["anual"], LIMITES[param_sel]["anual"]],
-            "y2": [LIMITES[param_sel]["puntual"], LIMITES[param_sel]["puntual"]],
+            "limite": ["Anual", "Puntual"],
+            "valor": [
+                LIMITES[param_sel]["anual"],
+                LIMITES[param_sel]["puntual"],
+            ],
         })
     
-        capas.insert(
-            0,
-            alt.Chart(limites_df).mark_area(
-                opacity=0.2,
-                color="orange"
+        capas.append(
+            alt.Chart(limites_df).mark_rule(
+                strokeWidth=2,
+                strokeDash=[6, 4]
             ).encode(
-                x="datetime:T",
-                y="y1:Q",
-                y2="y2:Q"
+                y="valor:Q",
+                color=alt.Color(
+                    "limite:N",
+                    scale=alt.Scale(
+                        domain=["Anual", "Puntual"],
+                        range=["orange", "red"]
+                    ),
+                    legend=alt.Legend(title="Límites legales")
+                )
             )
         )
 
