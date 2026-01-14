@@ -899,12 +899,12 @@ with tab_dashboard:
     else:
         st.info("No hay datos suficientes para calcular eficiencias.")
 
-        # -------------------------------------------------
-        # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
-        # -------------------------------------------------
-        st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
-        
-        def diagnostico_filtros_fca(df_plot, parametro):
+    # -------------------------------------------------
+    # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
+    # -------------------------------------------------
+    st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
+    
+    def diagnostico_filtros_fca(df_plot, parametro):
         """
         Diagnóstico automático de filtros FCA
         Basado en tendencia reciente (EMA7) y eficiencia real
@@ -972,7 +972,7 @@ with tab_dashboard:
                 "Ligera caída de eficiencia"
             ]
     
-        return resultado
+    return resultado
     
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
