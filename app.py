@@ -153,6 +153,20 @@ def calcular_upa(valor_actual_medio, n_dias_actuales, estimado, n_dias_restantes
 
     return total_acumulado / (n_dias_actuales + n_dias_restantes)
 
+def valor_con_semaforo(valor, unidad, limite_anual):
+    if valor is None or pd.isna(valor):
+        return "—"
+    sem = semaforo_promedio(valor, limite_anual)
+    return f"{valor:.2f} {unidad} {sem}"
+
+def texto_margen(margen):
+    if margen is None:
+        return ""
+    if margen < 0:
+        return f":red[Margen previsto: {margen:.1f} ppm]"
+    if margen < 0.2 * abs(margen):
+        return f":orange[Margen previsto: +{margen:.1f} ppm]"
+    return f":green[Margen previsto: +{margen:.1f} ppm]"
 
 # =====================================================
 # PESTAÑAS
@@ -213,35 +227,32 @@ with tab_dashboard:
     
             # --- Mensual ---
             c1.metric(
-                "HC medio mensual (ppm)",
-                f"{hc_mes:.2f}" if hc_mes is not None else "—",
-                semaforo_promedio(hc_mes, LIMITES["HC"]["anual"])
+                "HC medio mensual",
+                valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"])
             )
+            
             c2.metric(
-                "DQO medio mensual (ppm)",
-                f"{dqo_mes:.2f}" if dqo_mes is not None else "—",
-                semaforo_promedio(dqo_mes, LIMITES["DQO"]["anual"])
+                "DQO medio mensual",
+                valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"])
             )
-    
-            # --- Anual ---
+            
             c3.metric(
-                "HC medio anual (ppm)",
-                f"{hc_anual:.2f}" if hc_anual is not None else "—",
-                semaforo_promedio(hc_anual, LIMITES["HC"]["anual"])
+                "HC medio anual",
+                valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"])
             )
+            
             c4.metric(
-                "DQO medio anual (ppm)",
-                f"{dqo_anual:.2f}" if dqo_anual is not None else "—",
-                semaforo_promedio(dqo_anual, LIMITES["DQO"]["anual"])
+                "DQO medio anual",
+                valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"])
             )
 
-    # =====================================================
-# 🔮 UPA – Última previsión anual
+# =====================================================
+# 🔮 UPA – Última previsión anual (Salida FCA)
 # =====================================================
 st.divider()
-st.subheader("🔮 UPA – Última previsión anual (Salida FCA)")
+st.subheader("🔮 UPA – Última previsión anual")
 
-# --- Días con envío a emisario ya considerados ---
+# --- Días con envío a emisario considerados ---
 df_anual_env = df_val.copy()
 
 dias_transcurridos = len(df_anual_env)
@@ -253,6 +264,7 @@ if dias_transcurridos == 0:
 else:
     c1, c2 = st.columns(2)
 
+    # --- Valores estimados por el usuario ---
     with c1:
         est_hc = st.number_input(
             "Estimado HC medio hasta fin de año (ppm)",
@@ -269,6 +281,7 @@ else:
             step=1.0
         )
 
+    # --- Cálculo UPA ---
     upa_hc = calcular_upa(
         hc_anual,
         dias_transcurridos,
@@ -283,21 +296,43 @@ else:
         dias_restantes
     )
 
+    # --- Márgenes respecto al límite anual ---
+    margen_upa_hc = (
+        LIMITES["HC"]["anual"] - upa_hc
+        if upa_hc is not None else None
+    )
+
+    margen_upa_dqo = (
+        LIMITES["DQO"]["anual"] - upa_dqo
+        if upa_dqo is not None else None
+    )
+
     c3, c4 = st.columns(2)
 
+    # --- UPA HC ---
     c3.metric(
         "UPA HC (ppm)",
-        f"{upa_hc:.2f}" if upa_hc is not None else "—",
-        semaforo_promedio(upa_hc, LIMITES["HC"]["anual"])
+        valor_con_semaforo(
+            upa_hc,
+            "ppm",
+            LIMITES["HC"]["anual"]
+        )
     )
+    if margen_upa_hc is not None:
+        c3.markdown(texto_margen(margen_upa_hc))
 
+    # --- UPA DQO ---
     c4.metric(
         "UPA DQO (ppm)",
-        f"{upa_dqo:.2f}" if upa_dqo is not None else "—",
-        semaforo_promedio(upa_dqo, LIMITES["DQO"]["anual"])
+        valor_con_semaforo(
+            upa_dqo,
+            "ppm",
+            LIMITES["DQO"]["anual"]
+        )
     )
-
-    
+    if margen_upa_dqo is not None:
+        c4.markdown(texto_margen(margen_upa_dqo))
+          
     # ---------- ESTADO HOY ----------
     st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
 
