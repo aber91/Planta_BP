@@ -992,8 +992,8 @@ with tab_dashboard:
                 "Ligera caída de eficiencia"
             ]
             
-        if df_salida.empty or len(df_salida) < 7:
-        return None
+    if df_salida.empty or len(df_salida) < 7:
+    return None
       
     # -------------------------------------------------
     # ESTADO DIARIO MENSUAL
