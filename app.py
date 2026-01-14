@@ -176,8 +176,8 @@ with tab_dashboard:
     
     punto_sel = c1.selectbox(
         "Punto",
-        ["Salida FCA", "Comparativo"],
-        index=0,
+        ["Entrada Planta", "X-507", "Salida FCA", "Comparativo"],
+        index=2,  # Salida FCA por defecto
         key="graf_punto"
     )
     
