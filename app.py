@@ -429,3 +429,51 @@ with tab_gestion:
                 f"Importación completada: {total_insertados} registros procesados"
             )
             st.rerun()
+
+    # ---------- COPIA DE SEGURIDAD BBDD ----------
+    with st.expander("💾 Copia de seguridad de la base de datos"):
+        st.markdown(
+            """
+            **Backup / restauración de la base de datos**
+
+            Recomendado:
+            - antes de cerrar un mes
+            - antes de reimportar Excel
+            - antes de grandes ediciones
+            """
+        )
+
+        # --- EXPORTAR ---
+        try:
+            with open(DB_PATH, "rb") as f:
+                st.download_button(
+                    label="📥 Descargar backup de la BBDD",
+                    data=f,
+                    file_name="planta_backup.db",
+                    mime="application/octet-stream",
+                    key="download_db_backup"
+                )
+        except Exception as e:
+            st.warning("No se ha podido acceder a la base de datos para el backup")
+
+        st.divider()
+
+        # --- IMPORTAR / RESTAURAR ---
+        uploaded_db = st.file_uploader(
+            "📤 Restaurar base de datos desde backup (.db)",
+            type=["db"],
+            key="upload_db_backup"
+        )
+
+        if uploaded_db is not None:
+            st.warning(
+                "⚠️ Esta acción sobrescribirá TODOS los datos actuales."
+            )
+
+            if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
+                with open(DB_PATH, "wb") as f:
+                    f.write(uploaded_db.read())
+
+                st.success("Base de datos restaurada correctamente.")
+                st.info("La aplicación se recargará para aplicar los cambios.")
+                st.rerun()
