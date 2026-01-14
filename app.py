@@ -344,8 +344,8 @@ with tab_dashboard:
     
         st.plotly_chart(fig, use_container_width=True)
 
-else:
-    st.info("No hay datos para el gráfico")
+    else:
+        st.info("No hay datos para el gráfico")
 
       # ---------- ESTADO DIARIO MENSUAL ----------
     with st.expander("📅 Estado diario de la planta (mes)"):
