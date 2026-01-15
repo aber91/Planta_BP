@@ -32,7 +32,7 @@ def backup_automatico_db(conn):
     Crea un backup diario de la base de datos SQLite
     si no existe ya uno para el día actual.
     """
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
         return
 
     hoy = date.today().isoformat()
@@ -51,6 +51,25 @@ def backup_automatico_db(conn):
 
     except Exception as e:
         st.warning(f"No se pudo crear el backup automático: {e}")
+
+def backup_manual_db(conn):
+    """
+    Crea un backup inmediato con timestamp.
+    """
+    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
+        return None
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = os.path.join(BACKUP_DIR, f"planta_backup_manual_{ts}.db")
+
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
+        with open(DB_PATH, "rb") as src, open(backup_file, "wb") as dst:
+            dst.write(src.read())
+        return backup_file
+    except Exception:
+        return None
+
 
 # -----------------------------------------------------
 # CONEXIÓN SQLITE
@@ -1172,49 +1191,38 @@ with tab_gestion:
             st.rerun()
 
     # ---------- COPIA DE SEGURIDAD BBDD ----------
-    with st.expander("💾 Copia de seguridad de la base de datos"):
-        st.markdown(
-            """
-            **Backup / restauración de la base de datos**
-
-            Recomendado:
-            - antes de cerrar un mes
-            - antes de reimportar Excel
-            - antes de grandes ediciones
-            """
-        )
-
-        # --- EXPORTAR ---
-        try:
-            with open(DB_PATH, "rb") as f:
-                st.download_button(
-                    label="📥 Descargar backup de la BBDD",
-                    data=f,
-                    file_name="planta_backup.db",
-                    mime="application/octet-stream",
-                    key="download_db_backup"
-                )
-        except Exception as e:
-            st.warning("No se ha podido acceder a la base de datos para el backup")
-
+    with st.expander("💾 Copia de seguridad (backups)"):
+    
+        # Mostrar backups existentes
+        backups = []
+        if os.path.exists(BACKUP_DIR):
+            backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
+    
+        if backups:
+            st.write("📂 Backups disponibles:")
+            for b in backups[:5]:
+                st.write(f"- {b}")
+        else:
+            st.info("No hay backups todavía.")
+    
         st.divider()
+    
+        # Crear backup manual
+        if st.button("📥 Crear backup ahora"):
+            ruta = backup_manual_db(conn)
+            if ruta:
+                st.success(f"Backup creado: {os.path.basename(ruta)}")
+            else:
+                st.error("No se pudo crear el backup (BBDD vacía o error).")
+    
+        # Descargar último backup
+        if backups:
+            ultimo = os.path.join(BACKUP_DIR, backups[0])
+            with open(ultimo, "rb") as f:
+                st.download_button(
+                    "⬇️ Descargar último backup",
+                    data=f,
+                    file_name=backups[0],
+                    mime="application/octet-stream"
+                )
 
-        # --- IMPORTAR / RESTAURAR ---
-        uploaded_db = st.file_uploader(
-            "📤 Restaurar base de datos desde backup (.db)",
-            type=["db"],
-            key="upload_db_backup"
-        )
-
-        if uploaded_db is not None:
-            st.warning(
-                "⚠️ Esta acción sobrescribirá TODOS los datos actuales."
-            )
-
-            if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
-                with open(DB_PATH, "wb") as f:
-                    f.write(uploaded_db.read())
-
-                st.success("Base de datos restaurada correctamente.")
-                st.info("La aplicación se recargará para aplicar los cambios.")
-                st.rerun()
