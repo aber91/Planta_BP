@@ -175,11 +175,11 @@ conn.commit()
 # -----------------------------------------------------
 # 🔄 RESTAURACIÓN AUTOMÁTICA (ANTES DE CARGAR DATOS)
 # -----------------------------------------------------
-restaurar_desde_backup_si_bd_vacia(conn)
+restaurado = restaurar_desde_backup_si_bd_vacia(conn)
 
-# -----------------------------------------------------
-# 💾 BACKUP AUTOMÁTICO DIARIO
-# -----------------------------------------------------
+if restaurado:
+    conn = get_conn()  # 🔁 REABRIR conexión tras restaurar
+
 backup_automatico_db(conn)
 
 # =====================================================
