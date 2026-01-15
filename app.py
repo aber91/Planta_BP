@@ -12,24 +12,27 @@ import plotly.graph_objects as go
 import calendar
 
 # =====================================================
-# CONFIGURACIÓN GENERAL
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA
 # =====================================================
 
-# Persistencia robusta (Streamlit Cloud / local)
-if os.path.isdir("/mount/data"):
-    PERSISTENT_DIR = "/mount/data"
-else:
-    PERSISTENT_DIR = "data"
-    os.makedirs(PERSISTENT_DIR, exist_ok=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PERSISTENT_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 
-@st.cache_resource
 def get_conn():
+    """
+    Conexión SQLite persistente.
+    NO usar cache_resource para evitar conexiones muertas.
+    """
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 conn = get_conn()
 
+# -----------------------------------------------------
+# CONSTANTES DE NEGOCIO
+# -----------------------------------------------------
 PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
 
@@ -38,14 +41,17 @@ LIMITES = {
     "DQO": {"puntual": 700, "anual": 125},
 }
 
-st.set_page_config(page_title="Control de analíticas", layout="wide")
-st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
-
 # Año actual (global)
 anio = date.today().year
 
+# -----------------------------------------------------
+# CONFIGURACIÓN STREAMLIT
+# -----------------------------------------------------
+st.set_page_config(page_title="Control de analíticas", layout="wide")
+st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
+
 # =====================================================
-# BASE DE DATOS
+# BASE DE DATOS – ESTRUCTURA
 # =====================================================
 
 conn.execute("""
@@ -68,8 +74,6 @@ CREATE TABLE IF NOT EXISTS envio_emisario (
 )
 """)
 
-conn.commit()
-
 conn.execute("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
     anio INTEGER,
@@ -78,6 +82,7 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
     PRIMARY KEY (anio, parametro)
 )
 """)
+
 conn.commit()
 
 # =====================================================
@@ -93,10 +98,10 @@ else:
 df_envio = pd.read_sql("SELECT * FROM envio_emisario", conn)
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
-    
-# ----------------------------------------------
-# Cargar estimados UPA persistentes
-# ----------------------------------------------
+
+# -----------------------------------------------------
+# ESTIMADOS UPA PERSISTENTES
+# -----------------------------------------------------
 df_est = pd.read_sql(
     "SELECT * FROM estimados_upa WHERE anio = ?",
     conn,
