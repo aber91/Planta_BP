@@ -1183,11 +1183,11 @@ with tab_gestion:
                     subprocess.run(["git", "push"], check=True)
                     st.success("✅ Base de datos guardada en GitHub correctamente")
 
-    except Exception as e:
-        st.error(
-            "❌ No se pudo guardar en GitHub.\n\n"
-            f"Detalle técnico:\n{e}"
-        )
+            except Exception as e:
+                st.error(
+                    "❌ No se pudo guardar en GitHub.\n\n"
+                    f"Detalle técnico:\n{e}"
+                )
 
     
         st.divider()
