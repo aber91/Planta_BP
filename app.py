@@ -38,17 +38,13 @@ def backup_automatico_db(conn):
     hoy = date.today().isoformat()
     backup_file = os.path.join(BACKUP_DIR, f"planta_backup_{hoy}.db")
 
-    # Evitar crear múltiples backups el mismo día
     if os.path.exists(backup_file):
         return
 
     try:
-        # Forzar volcado a disco antes de copiar
         conn.execute("PRAGMA wal_checkpoint(FULL);")
-
         with open(DB_PATH, "rb") as src, open(backup_file, "wb") as dst:
             dst.write(src.read())
-
     except Exception as e:
         st.warning(f"No se pudo crear el backup automático: {e}")
 
@@ -70,6 +66,45 @@ def backup_manual_db(conn):
     except Exception:
         return None
 
+def restaurar_desde_backup_si_bd_vacia(conn):
+    """
+    Si la base de datos está vacía y existen backups,
+    restaura automáticamente el último backup disponible.
+    """
+    try:
+        cur = conn.execute("SELECT COUNT(*) FROM analiticas")
+        num = cur.fetchone()[0]
+    except Exception:
+        num = 0
+
+    if num > 0:
+        return  # Hay datos → no restaurar
+
+    if not os.path.exists(BACKUP_DIR):
+        return
+
+    backups = sorted(
+        [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")],
+        reverse=True
+    )
+
+    if not backups:
+        return
+
+    ultimo_backup = os.path.join(BACKUP_DIR, backups[0])
+
+    try:
+        conn.close()
+
+        with open(ultimo_backup, "rb") as src, open(DB_PATH, "wb") as dst:
+            dst.write(src.read())
+
+        st.warning(
+            f"🔄 Base de datos restaurada automáticamente desde backup: {backups[0]}"
+        )
+
+    except Exception as e:
+        st.error(f"No se pudo restaurar la BBDD desde backup: {e}")
 
 # -----------------------------------------------------
 # CONEXIÓN SQLITE
@@ -94,7 +129,6 @@ LIMITES = {
     "DQO": {"puntual": 700, "anual": 125},
 }
 
-# Año actual (global)
 anio = date.today().year
 
 # -----------------------------------------------------
@@ -139,7 +173,12 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 conn.commit()
 
 # -----------------------------------------------------
-# BACKUP AUTOMÁTICO (SE EJECUTA UNA VEZ AL ARRANQUE)
+# 🔄 RESTAURACIÓN AUTOMÁTICA (ANTES DE CARGAR DATOS)
+# -----------------------------------------------------
+restaurar_desde_backup_si_bd_vacia(conn)
+
+# -----------------------------------------------------
+# 💾 BACKUP AUTOMÁTICO DIARIO
 # -----------------------------------------------------
 backup_automatico_db(conn)
 
