@@ -21,6 +21,40 @@ os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 
+# -----------------------------------------------------
+# BACKUPS AUTOMÁTICOS
+# -----------------------------------------------------
+BACKUP_DIR = os.path.join(PERSISTENT_DIR, "backups")
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+def backup_automatico_db(conn):
+    """
+    Crea un backup diario de la base de datos SQLite
+    si no existe ya uno para el día actual.
+    """
+    if not os.path.exists(DB_PATH):
+        return
+
+    hoy = date.today().isoformat()
+    backup_file = os.path.join(BACKUP_DIR, f"planta_backup_{hoy}.db")
+
+    # Evitar crear múltiples backups el mismo día
+    if os.path.exists(backup_file):
+        return
+
+    try:
+        # Forzar volcado a disco antes de copiar
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
+
+        with open(DB_PATH, "rb") as src, open(backup_file, "wb") as dst:
+            dst.write(src.read())
+
+    except Exception as e:
+        st.warning(f"No se pudo crear el backup automático: {e}")
+
+# -----------------------------------------------------
+# CONEXIÓN SQLITE
+# -----------------------------------------------------
 def get_conn():
     """
     Conexión SQLite persistente.
@@ -84,6 +118,11 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 conn.commit()
+
+# -----------------------------------------------------
+# BACKUP AUTOMÁTICO (SE EJECUTA UNA VEZ AL ARRANQUE)
+# -----------------------------------------------------
+backup_automatico_db(conn)
 
 # =====================================================
 # CARGA DE DATOS
