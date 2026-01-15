@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import os
 import sqlite3
+import subprocess
 import altair as alt
 import plotly.graph_objects as go
 import calendar
