@@ -1166,21 +1166,29 @@ with tab_gestion:
         # Guardar cambios en GitHub
         if st.button("💾 Guardar estado actual en GitHub"):
             try:
-                subprocess.run(["git", "add", "planta.db"], check=True)
-                subprocess.run(
-                    ["git", "commit", "-m", "Actualización BBDD analíticas"],
-                    check=True
+                status = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    capture_output=True,
+                    text=True
                 )
-                subprocess.run(["git", "push"], check=True)
-    
-                st.success("✅ Base de datos guardada en GitHub correctamente")
-    
-            except Exception as e:
-                st.error(
-                    "❌ No se pudo guardar en GitHub.\n\n"
-                    "Asegúrate de que el entorno tiene permisos de push.\n\n"
-                    f"Detalle: {e}"
-                )
+        
+                if status.stdout.strip() == "":
+                    st.info("ℹ️ No hay cambios nuevos en la base de datos.")
+                else:
+                    subprocess.run(["git", "add", "planta.db"], check=True)
+                    subprocess.run(
+                        ["git", "commit", "-m", "Actualización BBDD analíticas"],
+                        check=True
+                    )
+                    subprocess.run(["git", "push"], check=True)
+                    st.success("✅ Base de datos guardada en GitHub correctamente")
+
+    except Exception as e:
+        st.error(
+            "❌ No se pudo guardar en GitHub.\n\n"
+            f"Detalle técnico:\n{e}"
+        )
+
     
         st.divider()
     
