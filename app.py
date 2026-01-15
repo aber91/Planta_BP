@@ -12,99 +12,13 @@ import plotly.graph_objects as go
 import calendar
 
 # =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (GITHUB)
 # =====================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PERSISTENT_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
-DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
-
-# -----------------------------------------------------
-# BACKUPS AUTOMÁTICOS
-# -----------------------------------------------------
-BACKUP_DIR = os.path.join(PERSISTENT_DIR, "backups")
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-def backup_automatico_db(conn):
-    """
-    Crea un backup diario de la base de datos SQLite
-    si no existe ya uno para el día actual.
-    """
-    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
-        return
-
-    hoy = date.today().isoformat()
-    backup_file = os.path.join(BACKUP_DIR, f"planta_backup_{hoy}.db")
-
-    if os.path.exists(backup_file):
-        return
-
-    try:
-        conn.execute("PRAGMA wal_checkpoint(FULL);")
-        with open(DB_PATH, "rb") as src, open(backup_file, "wb") as dst:
-            dst.write(src.read())
-    except Exception as e:
-        st.warning(f"No se pudo crear el backup automático: {e}")
-
-def backup_manual_db(conn):
-    """
-    Crea un backup inmediato con timestamp.
-    """
-    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
-        return None
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = os.path.join(BACKUP_DIR, f"planta_backup_manual_{ts}.db")
-
-    try:
-        conn.execute("PRAGMA wal_checkpoint(FULL);")
-        with open(DB_PATH, "rb") as src, open(backup_file, "wb") as dst:
-            dst.write(src.read())
-        return backup_file
-    except Exception:
-        return None
-
-def restaurar_desde_backup_si_bd_vacia():
-    """
-    Comprueba si la BBDD está vacía y existe algún backup.
-    Devuelve True si hay que restaurar, False si no.
-    """
-    if not os.path.exists(DB_PATH):
-        return False
-
-    conn_tmp = sqlite3.connect(DB_PATH)
-    try:
-        cur = conn_tmp.execute("SELECT COUNT(*) FROM analiticas")
-        num = cur.fetchone()[0]
-    except Exception:
-        num = 0
-    finally:
-        conn_tmp.close()
-
-    if num > 0:
-        return False
-
-    if not os.path.exists(BACKUP_DIR):
-        return False
-
-    backups = sorted(
-        [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")],
-        reverse=True
-    )
-
-    if not backups:
-        return False
-
-    ultimo_backup = os.path.join(BACKUP_DIR, backups[0])
-
-    try:
-        with open(ultimo_backup, "rb") as src, open(DB_PATH, "wb") as dst:
-            dst.write(src.read())
-        return True
-    except Exception:
-        return False
+# 📌 Base de datos versionada en el repo (persistente)
+DB_PATH = os.path.join(BASE_DIR, "planta.db")
 
 # -----------------------------------------------------
 # CONEXIÓN SQLITE
@@ -112,7 +26,6 @@ def restaurar_desde_backup_si_bd_vacia():
 def get_conn():
     """
     Conexión SQLite persistente.
-    NO usar cache_resource para evitar conexiones muertas.
     """
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
@@ -171,22 +84,6 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 conn.commit()
-
-# -----------------------------------------------------
-# 🔄 RESTAURACIÓN AUTOMÁTICA (ANTES DE CARGAR DATOS)
-# -----------------------------------------------------
-# Restaurar si procede (ANTES de abrir conexión principal)
-restaurado = restaurar_desde_backup_si_bd_vacia()
-
-# Abrir conexión SIEMPRE después
-conn = get_conn()
-
-if restaurado:
-    st.warning("🔄 Base de datos restaurada automáticamente desde el último backup")
-
-# Backup automático diario
-backup_automatico_db(conn)
-
 
 # =====================================================
 # CARGA DE DATOS
@@ -1250,58 +1147,44 @@ with tab_gestion:
             )
             st.rerun()
 
-    # ---------- COPIA DE SEGURIDAD BBDD ----------
-    with st.expander("💾 Copia de seguridad (backups)"):
+    # ---------- COPIA DE SEGURIDAD BBDD (GITHUB) ----------
+    with st.expander("💾 Copia de seguridad (GitHub)"):
     
-        # Mostrar backups existentes
-        backups = []
-        if os.path.exists(BACKUP_DIR):
-            backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
-    
-        if backups:
-            st.write("📂 Backups disponibles:")
-            for b in backups[:5]:
-                st.write(f"- {b}")
-        else:
-            st.info("No hay backups todavía.")
+        st.markdown(
+            """
+            La base de datos **planta.db** se guarda directamente en el repositorio GitHub.
+            
+            ✔️ Los datos **no se pierden al reiniciar la app**  
+            ✔️ GitHub actúa como **backup histórico**  
+            ✔️ Se puede volver a versiones anteriores si es necesario
+            """
+        )
     
         st.divider()
     
-        # Crear backup manual
-        if st.button("📥 Crear backup ahora"):
-            ruta = backup_manual_db(conn)
-            if ruta:
-                st.success(f"Backup creado: {os.path.basename(ruta)}")
-            else:
-                st.error("No se pudo crear el backup (BBDD vacía o error).")
-    
-        # Descargar último backup
-        if backups:
-            ultimo = os.path.join(BACKUP_DIR, backups[0])
-            with open(ultimo, "rb") as f:
-                st.download_button(
-                    "⬇️ Descargar último backup",
-                    data=f,
-                    file_name=backups[0],
-                    mime="application/octet-stream"
+        # Guardar cambios en GitHub
+        if st.button("💾 Guardar estado actual en GitHub"):
+            try:
+                subprocess.run(["git", "add", "planta.db"], check=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "Actualización BBDD analíticas"],
+                    check=True
                 )
-        # --- IMPORTAR / RESTAURAR ---
-        uploaded_db = st.file_uploader(
-            "📤 Restaurar base de datos desde backup (.db)",
-            type=["db"],
-            key="upload_db_backup"
+                subprocess.run(["git", "push"], check=True)
+    
+                st.success("✅ Base de datos guardada en GitHub correctamente")
+    
+            except Exception as e:
+                st.error(
+                    "❌ No se pudo guardar en GitHub.\n\n"
+                    "Asegúrate de que el entorno tiene permisos de push.\n\n"
+                    f"Detalle: {e}"
+                )
+    
+        st.divider()
+    
+        st.info(
+            "ℹ️ Recomendación: guarda en GitHub al final de cada jornada "
+            "o tras introducir/modificar analíticas importantes."
         )
-
-        if uploaded_db is not None:
-            st.warning(
-                "⚠️ Esta acción sobrescribirá TODOS los datos actuales."
-            )
-
-            if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
-                with open(DB_PATH, "wb") as f:
-                    f.write(uploaded_db.read())
-
-                st.success("Base de datos restaurada correctamente.")
-                st.info("La aplicación se recargará para aplicar los cambios.")
-                st.rerun()
 
