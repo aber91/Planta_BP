@@ -1163,32 +1163,21 @@ with tab_gestion:
     
         st.divider()
     
-        # Guardar cambios en GitHub
-        if st.button("💾 Guardar estado actual en GitHub"):
-            try:
-                status = subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    capture_output=True,
-                    text=True
-                )
+        with st.expander("💾 Persistencia de datos"):
+            st.info(
+                """
+                ℹ️ Los datos se guardan en el archivo **planta.db** dentro del repositorio.
         
-                if status.stdout.strip() == "":
-                    st.info("ℹ️ No hay cambios nuevos en la base de datos.")
-                else:
-                    subprocess.run(["git", "add", "planta.db"], check=True)
-                    subprocess.run(
-                        ["git", "commit", "-m", "Actualización BBDD analíticas"],
-                        check=True
-                    )
-                    subprocess.run(["git", "push"], check=True)
-                    st.success("✅ Base de datos guardada en GitHub correctamente")
-
-            except Exception as e:
-                st.error(
-                    "❌ No se pudo guardar en GitHub.\n\n"
-                    f"Detalle técnico:\n{e}"
-                )
-
+                Para que los datos persistan tras reiniciar la aplicación,
+                es necesario confirmar los cambios en GitHub manualmente:
+        
+                ```bash
+                git add planta.db
+                git commit -m "Actualización analíticas"
+                git push
+                ```
+                """
+            )
     
         st.divider()
     
