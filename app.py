@@ -723,25 +723,40 @@ with tab_dashboard:
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
-   
-    # ---------- ESTADO HOY ----------
-    st.subheader("🟢 Estado de la planta – HOY (Salida FCA)")
 
-    hoy = date.today()
-    df_hoy = df[(df["punto"] == "Salida FCA") & (df["dia"] == hoy)]
+    # ---------- ESTADO PLANTA ----------
 
-    if not df_hoy.empty:
-        fila = analitica_valida_salida_fca(df_hoy).iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("HC", fila["HC"])
-        c2.metric("DQO", fila["DQO"])
-        c3.metric("SS", fila["SS"])
-        c4.metric("Sulf", fila["Sulf"])
-        st.info(f"Estado: {estado_global(fila['HC'], fila['DQO'])}")
+    st.subheader("🟢 Estado actual de la planta – Último análisis disponible")
+    
+    df_salida = df[df["punto"] == "Salida FCA"]
+    
+    if df_salida.empty:
+        st.warning("No hay analíticas registradas todavía.")
     else:
-        st.warning("No hay analítica para hoy")
-
-    st.divider()
+        # Aplicar lógica de analítica válida por día
+        df_val = analitica_valida_salida_fca(df_salida)
+        df_val = df_val.sort_values("datetime")
+    
+        ultima = df_val.iloc[-1]
+    
+        fecha_txt = ultima["datetime"].strftime("%d/%m/%Y %H:%M")
+    
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("HC", ultima["HC"])
+        c2.metric("DQO", ultima["DQO"])
+        c3.metric("SS", ultima["SS"])
+        c4.metric("Sulf", ultima["Sulf"])
+    
+        st.caption(f"📅 Último análisis disponible: **{fecha_txt}**")
+    
+        estado = estado_global(ultima["HC"], ultima["DQO"])
+    
+        if estado.startswith("🔴"):
+            st.error(f"Estado global: {estado}")
+        elif estado.startswith("🟠"):
+            st.warning(f"Estado global: {estado}")
+        else:
+            st.success(f"Estado global: {estado}")
 
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Análisis gráfico")
