@@ -1188,3 +1188,22 @@ with tab_gestion:
             "o tras introducir/modificar analíticas importantes."
         )
 
+        # --- IMPORTAR / RESTAURAR ---
+        uploaded_db = st.file_uploader(
+            "📤 Restaurar base de datos desde backup (.db)",
+            type=["db"],
+            key="upload_db_backup"
+        )
+
+        if uploaded_db is not None:
+            st.warning(
+                "⚠️ Esta acción sobrescribirá TODOS los datos actuales."
+            )
+
+            if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
+                with open(DB_PATH, "wb") as f:
+                    f.write(uploaded_db.read())
+
+                st.success("Base de datos restaurada correctamente.")
+                st.info("La aplicación se recargará para aplicar los cambios.")
+                st.rerun()
