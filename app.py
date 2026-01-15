@@ -66,22 +66,28 @@ def backup_manual_db(conn):
     except Exception:
         return None
 
-def restaurar_desde_backup_si_bd_vacia(conn):
+def restaurar_desde_backup_si_bd_vacia():
     """
-    Si la base de datos está vacía y existen backups,
-    restaura automáticamente el último backup disponible.
+    Comprueba si la BBDD está vacía y existe algún backup.
+    Devuelve True si hay que restaurar, False si no.
     """
+    if not os.path.exists(DB_PATH):
+        return False
+
+    conn_tmp = sqlite3.connect(DB_PATH)
     try:
-        cur = conn.execute("SELECT COUNT(*) FROM analiticas")
+        cur = conn_tmp.execute("SELECT COUNT(*) FROM analiticas")
         num = cur.fetchone()[0]
     except Exception:
         num = 0
+    finally:
+        conn_tmp.close()
 
     if num > 0:
-        return  # Hay datos → no restaurar
+        return False
 
     if not os.path.exists(BACKUP_DIR):
-        return
+        return False
 
     backups = sorted(
         [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")],
@@ -89,22 +95,16 @@ def restaurar_desde_backup_si_bd_vacia(conn):
     )
 
     if not backups:
-        return
+        return False
 
     ultimo_backup = os.path.join(BACKUP_DIR, backups[0])
 
     try:
-        conn.close()
-
         with open(ultimo_backup, "rb") as src, open(DB_PATH, "wb") as dst:
             dst.write(src.read())
-
-        st.warning(
-            f"🔄 Base de datos restaurada automáticamente desde backup: {backups[0]}"
-        )
-
-    except Exception as e:
-        st.error(f"No se pudo restaurar la BBDD desde backup: {e}")
+        return True
+    except Exception:
+        return False
 
 # -----------------------------------------------------
 # CONEXIÓN SQLITE
@@ -175,12 +175,18 @@ conn.commit()
 # -----------------------------------------------------
 # 🔄 RESTAURACIÓN AUTOMÁTICA (ANTES DE CARGAR DATOS)
 # -----------------------------------------------------
-restaurado = restaurar_desde_backup_si_bd_vacia(conn)
+# Restaurar si procede (ANTES de abrir conexión principal)
+restaurado = restaurar_desde_backup_si_bd_vacia()
+
+# Abrir conexión SIEMPRE después
+conn = get_conn()
 
 if restaurado:
-    conn = get_conn()  # 🔁 REABRIR conexión tras restaurar
+    st.warning("🔄 Base de datos restaurada automáticamente desde el último backup")
 
+# Backup automático diario
 backup_automatico_db(conn)
+
 
 # =====================================================
 # CARGA DE DATOS
