@@ -47,6 +47,17 @@ def get_conn():
 
 conn = get_conn()
 
+def ejecutar_sql(sql, params=None):
+    conn = get_conn()
+    try:
+        if params:
+            conn.execute(sql, params)
+        else:
+            conn.execute(sql)
+        conn.commit()
+    finally:
+        conn.close()
+
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
