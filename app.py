@@ -792,17 +792,19 @@ with tab_dashboard:
             else:
                 st.warning("⚠️ No se puede ordenar: falta columna datetime")   
 
-            fig.add_trace(
-                go.Scatter(
-                    x=df_p["datetime"],
-                    y=df_p[param_sel],
-                    mode="lines+markers",
-                    name=punto_sel
+            if not df_p.empty and "datetime" in df_p.columns:
+            
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_p["datetime"],
+                        y=df_p[param_sel],
+                        mode="lines+markers",
+                        name=punto_sel
+                    )
                 )
-            )
-        
-        else:
-            st.info("ℹ️ No hay datos temporales suficientes para mostrar la tendencia.")
+            
+            else:
+                st.info("ℹ️ No hay datos temporales suficientes para mostrar la tendencia.")
     
             # ---------- EMA 7 analíticas ----------
             if mostrar_ema and not df_p.empty:
