@@ -30,30 +30,18 @@ st.sidebar.code(f"Existe DB: {os.path.exists(DB_PATH)}")
 st.sidebar.code(f"Tamaño DB: {os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'} bytes")
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE (ÚNICA Y PERSISTENTE)
+# CONEXIÓN SQLITE SIMPLE Y SEGURA
 # -----------------------------------------------------
 if "conn" not in st.session_state:
     st.session_state.conn = sqlite3.connect(
         DB_PATH,
-        check_same_thread=False
+        check_same_thread=False,
+        timeout=30  # 🔑 evita locks
     )
     st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
     st.session_state.conn.execute("PRAGMA synchronous=FULL;")
-    st.session_state.conn.execute("PRAGMA foreign_keys=ON;")
 
 conn = st.session_state.conn
-
-def forzar_guardado_sqlite(conn):
-    """
-    Fuerza a SQLite a escribir físicamente los datos en disco
-    SIN cerrar la conexión (Streamlit-safe).
-    """
-    try:
-        conn.execute("PRAGMA wal_checkpoint(FULL);")
-        conn.execute("PRAGMA optimize;")
-        conn.commit()
-    except Exception as e:
-        st.warning(f"Error sincronizando BBDD: {e}")
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
@@ -108,7 +96,7 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # 🔒 Garantizar que la estructura se escribe en disco
-forzar_guardado_sqlite(conn)
+
 
 # =====================================================
 # CARGA DE DATOS
@@ -509,7 +497,7 @@ with tab_dashboard:
                             (anio, "HC", est_hc)
                         )
 
-                        forzar_guardado_sqlite(conn)
+                        
                         
                         conn.execute(
                             """
@@ -521,7 +509,7 @@ with tab_dashboard:
                     
                         
 
-                        forzar_guardado_sqlite(conn)
+                        
                         
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1104,7 +1092,7 @@ with tab_gestion:
             
             st.success("Analítica guardada")
 
-            forzar_guardado_sqlite(conn)
+            
     
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
@@ -1124,7 +1112,7 @@ with tab_gestion:
                 
                 st.success("Tabla actualizada")
 
-                forzar_guardado_sqlite(conn)
+                
     
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
@@ -1148,7 +1136,7 @@ with tab_gestion:
                 
                 st.success("Envío a emisario actualizado")
 
-                forzar_guardado_sqlite(conn)
+                
     
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
@@ -1252,10 +1240,11 @@ with tab_gestion:
                 )
             
             if st.button("🔒 Preparar base de datos para commit Git"):
-                forzar_guardado_sqlite(conn)
-                st.success("Base de datos sincronizada en disco. Ya puedes hacer git commit.")
-
-                    
+                st.success(
+                    "ℹ️ La base de datos ya está sincronizada.\n\n"
+                    "Si vas a hacer commit, detén la app o reiníciala antes."
+                )
+                               
             st.divider()
         
             st.info(
