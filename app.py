@@ -121,6 +121,14 @@ def get_estimado(param):
 # =====================================================
 # FUNCIONES DE NEGOCIO
 # =====================================================
+if "datetime" not in df_p.columns:
+    # Intentar reconstruir datetime si viene por día
+    if "dia" in df_p.columns:
+        df_p = df_p.copy()
+        df_p["datetime"] = pd.to_datetime(df_p["dia"])
+    else:
+        st.warning("⚠️ Datos sin columna datetime, no se puede ordenar")
+        df_p = df_p.copy()
 
 def analitica_valida_salida_fca(df_in):
     resultados = []
