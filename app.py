@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS analiticas (
     UNIQUE(datetime, punto)
 )
 """)
+conn.commit()
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS envio_emisario (
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS envio_emisario (
     envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0, 1))
 )
 """)
+conn.commit()
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
@@ -94,9 +96,9 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
     PRIMARY KEY (anio, parametro)
 )
 """)
+conn.commit()
 
 # 🔒 Garantizar que la estructura se escribe en disco
-
 
 # =====================================================
 # CARGA DE DATOS
@@ -429,7 +431,7 @@ with tab_dashboard:
                         PRIMARY KEY (anio, parametro)
                     )
                     """)
-                    
+                    conn.commit()
                     
                     # -------------------------------------------------
                     # Cargar estimados guardados para el año actual
@@ -496,9 +498,8 @@ with tab_dashboard:
                             """,
                             (anio, "HC", est_hc)
                         )
-
-                        
-                        
+                        conn.commit()
+                                                
                         conn.execute(
                             """
                             INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
@@ -506,10 +507,7 @@ with tab_dashboard:
                             """,
                             (anio, "DQO", est_dqo)
                         )
-                    
-                        
-
-                        
+                        conn.commit()                      
                         
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1089,9 +1087,9 @@ with tab_gestion:
                 """,
                 (dt, punto, hc, ss, dqo, sulf),
             )
-            
+            conn.commit()
             st.success("Analítica guardada")
-
+            
             
     
     # ---------- TABLA EDITABLE ----------
@@ -1109,7 +1107,7 @@ with tab_gestion:
                     df_edit["datetime"]
                 ).dt.strftime("%Y-%m-%d %H:%M:%S")
                 df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
-                
+                conn.commit()
                 st.success("Tabla actualizada")
 
                 
@@ -1133,7 +1131,7 @@ with tab_gestion:
                 tabla_edit.to_sql(
                     "envio_emisario", conn, if_exists="append", index=False
                 )
-                
+                conn.commit()
                 st.success("Envío a emisario actualizado")
 
                 
@@ -1192,7 +1190,7 @@ with tab_gestion:
                         ),
                     )
                     total_insertados += 1
-
+                    conn.commit()
             
             st.success(
                 f"Importación completada: {total_insertados} registros procesados"
