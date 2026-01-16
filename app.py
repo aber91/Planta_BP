@@ -1172,9 +1172,11 @@ with tab_gestion:
                 es necesario confirmar los cambios en GitHub manualmente:
         
                 ```bash
-                git add planta.db
-                git commit -m "Actualización analíticas"
+                git pull --rebase
+                git add data/planta.db
+                git commit -m "Actualizar base de datos analíticas"
                 git push
+
                 ```
                 """
             )
