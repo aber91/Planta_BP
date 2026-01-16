@@ -152,11 +152,15 @@ conn.close()
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
+conn_est = get_conn()
+
 df_est = pd.read_sql(
     "SELECT * FROM estimados_upa WHERE anio = ?",
-    conn,
+    conn_est,
     params=(anio,)
 )
+
+conn_est.close()
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
