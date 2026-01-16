@@ -35,6 +35,13 @@ def get_conn():
 
 conn = get_conn()
 
+def forzar_guardado_sqlite(conn):
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
+        conn.commit()
+    except Exception:
+        pass
+
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
@@ -487,7 +494,9 @@ with tab_dashboard:
                             """,
                             (anio, "HC", est_hc)
                         )
-                    
+
+                        forzar_guardado_sqlite(conn)
+                        
                         conn.execute(
                             """
                             INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
@@ -497,7 +506,9 @@ with tab_dashboard:
                         )
                     
                         conn.commit()
-                    
+
+                        forzar_guardado_sqlite(conn)
+                        
                         # -------------------------------------------------
                         # Cálculo UPA
                         # -------------------------------------------------
@@ -1079,6 +1090,8 @@ with tab_gestion:
             conn.commit()
             st.success("Analítica guardada")
 
+            forzar_guardado_sqlite(conn)
+    
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
         if not df.empty:
@@ -1097,6 +1110,8 @@ with tab_gestion:
                 conn.commit()
                 st.success("Tabla actualizada")
 
+                forzar_guardado_sqlite(conn)
+    
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
         if not df.empty:
@@ -1119,6 +1134,8 @@ with tab_gestion:
                 conn.commit()
                 st.success("Envío a emisario actualizado")
 
+                forzar_guardado_sqlite(conn)
+    
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
         st.info("Archivos esperados en /data")
