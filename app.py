@@ -63,8 +63,12 @@ st.set_page_config(page_title="Control de analíticas", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
 # =====================================================
-# BASE DE DATOS – ESTRUCTURA (CREACIÓN SEGURA)
+# BASE DE DATOS – ESTRUCTURA (CREACIÓN ÚNICA Y SEGURA)
 # =====================================================
+
+# ⚠️ IMPORTANTE:
+# - Este bloque se ejecuta UNA SOLA VEZ al arranque
+# - NO volver a crear tablas en otras partes de la app
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS analiticas (
@@ -78,7 +82,6 @@ CREATE TABLE IF NOT EXISTS analiticas (
     UNIQUE(datetime, punto)
 )
 """)
-conn.commit()
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS envio_emisario (
@@ -86,19 +89,18 @@ CREATE TABLE IF NOT EXISTS envio_emisario (
     envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0, 1))
 )
 """)
-conn.commit()
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
     anio INTEGER NOT NULL,
     parametro TEXT NOT NULL,
-    valor REAL,
+    valor REAL NOT NULL,
     PRIMARY KEY (anio, parametro)
 )
 """)
-conn.commit()
 
-# 🔒 Garantizar que la estructura se escribe en disco
+# 🔒 Forzar escritura inmediata y liberar locks
+conn.commit()
 
 # =====================================================
 # CARGA DE DATOS
