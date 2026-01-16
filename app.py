@@ -42,6 +42,14 @@ def forzar_guardado_sqlite(conn):
     except Exception:
         pass
 
+def cerrar_conexion_sqlite(conn):
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
