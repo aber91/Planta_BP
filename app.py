@@ -13,35 +13,39 @@ import plotly.graph_objects as go
 import calendar
 
 # =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA (WRITE-SAFE)
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (DEFINITIVA)
 # =====================================================
+
+import os
+import sqlite3
+from datetime import date
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Directorio SIEMPRE escribible
-PERSISTENT_DIR = "/tmp/planta_bp"
+# 📁 Carpeta persistente dentro del repo
+PERSISTENT_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
+# 📄 Base de datos SIEMPRE en el repo
 DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 
-st.sidebar.markdown("### 🧪 Debug persistencia")
-st.sidebar.code(f"DB_PATH = {DB_PATH}")
-st.sidebar.code(f"Existe DB: {os.path.exists(DB_PATH)}")
-st.sidebar.code(f"Tamaño DB: {os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'} bytes")
+# 🔎 DEBUG visible
+st.sidebar.markdown("### 🗄️ Base de datos en uso")
+st.sidebar.code(DB_PATH)
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE SIMPLE Y SEGURA
+# CONEXIÓN SQLITE (SIN /tmp, SIN CACHE)
 # -----------------------------------------------------
-if "conn" not in st.session_state:
-    st.session_state.conn = sqlite3.connect(
-        DB_PATH,
-        check_same_thread=False,
-        timeout=30  # 🔑 evita locks
-    )
-    st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
-    st.session_state.conn.execute("PRAGMA synchronous=FULL;")
+def get_conn():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 
-conn = st.session_state.conn
+    # Forzar escritura REAL en disco
+    conn.execute("PRAGMA journal_mode=DELETE;")
+    conn.execute("PRAGMA synchronous=FULL;")
+
+    return conn
+
+conn = get_conn()
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
