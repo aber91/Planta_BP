@@ -1188,6 +1188,16 @@ with tab_gestion:
             "o tras introducir/modificar analíticas importantes."
         )
 
+        # Descargar último backup
+        if backups:
+            ultimo = os.path.join(BACKUP_DIR, backups[0])
+            with open(ultimo, "rb") as f:
+                st.download_button(
+                    "⬇️ Descargar último backup",
+                    data=f,
+                    file_name=backups[0],
+                    mime="application/octet-stream"
+
         # --- IMPORTAR / RESTAURAR ---
         uploaded_db = st.file_uploader(
             "📤 Restaurar base de datos desde backup (.db)",
