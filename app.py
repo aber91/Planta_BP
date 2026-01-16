@@ -13,13 +13,17 @@ import plotly.graph_objects as go
 import calendar
 
 # =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA (GITHUB)
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (WRITE-SAFE)
 # =====================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 📌 Base de datos versionada en el repo (persistente)
-DB_PATH = os.path.join(BASE_DIR, "data", "planta.db")
+# Directorio SIEMPRE escribible
+PERSISTENT_DIR = "/tmp/planta_bp"
+os.makedirs(PERSISTENT_DIR, exist_ok=True)
+
+DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
+
 
 st.sidebar.markdown("### 🧪 Debug persistencia")
 st.sidebar.code(f"DB_PATH = {DB_PATH}")
