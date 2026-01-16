@@ -1245,9 +1245,9 @@ with tab_gestion:
                     """
                 )
             
-                if st.button("🔒 Preparar base de datos para commit Git"):
-                    cerrar_conexion_sqlite(conn)
-                    st.success("Base de datos cerrada y sincronizada. Ya puedes hacer git commit.")
+            if st.button("🔒 Preparar base de datos para commit Git"):
+                cerrar_conexion_sqlite(conn)
+                st.success("Base de datos cerrada y sincronizada. Ya puedes hacer git commit.")
                     
             st.divider()
         
