@@ -21,6 +21,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 📌 Base de datos versionada en el repo (persistente)
 DB_PATH = os.path.join(BASE_DIR, "data", "planta.db")
 
+st.sidebar.markdown("### 🧪 Debug persistencia")
+st.sidebar.code(f"DB_PATH = {DB_PATH}")
+st.sidebar.code(f"Existe DB: {os.path.exists(DB_PATH)}")
+st.sidebar.code(f"Tamaño DB: {os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'} bytes")
+
 # -----------------------------------------------------
 # CONEXIÓN SQLITE
 # -----------------------------------------------------
