@@ -25,10 +25,13 @@ DB_PATH = os.path.join(BASE_DIR, "data", "planta.db")
 # CONEXIÓN SQLITE
 # -----------------------------------------------------
 def get_conn():
-    """
-    Conexión SQLite persistente.
-    """
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+
+    # 🔒 Forzar escritura directa en el archivo .db
+    conn.execute("PRAGMA journal_mode=DELETE;")
+    conn.execute("PRAGMA synchronous=FULL;")
+
+    return conn
 
 conn = get_conn()
 
