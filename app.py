@@ -85,7 +85,7 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # - Este bloque se ejecuta UNA SOLA VEZ al arranque
 # - NO volver a crear tablas en otras partes de la app
 
-conn.execute("""
+ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS analiticas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime TEXT NOT NULL,
@@ -98,14 +98,14 @@ CREATE TABLE IF NOT EXISTS analiticas (
 )
 """)
 
-conn.execute("""
+ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS envio_emisario (
     dia TEXT PRIMARY KEY,
     envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0, 1))
 )
 """)
 
-conn.execute("""
+ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
     anio INTEGER NOT NULL,
     parametro TEXT NOT NULL,
@@ -508,23 +508,22 @@ with tab_dashboard:
                         # -------------------------------------------------
                         # Guardar estimados automáticamente
                         # -------------------------------------------------
-                        conn.execute(
+                        ejecutar_sql(
                             """
                             INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
                             VALUES (?, ?, ?)
                             """,
                             (anio, "HC", est_hc)
                         )
-                        conn.commit()
-                                                
-                        conn.execute(
+                        
+                        ejecutar_sql(
                             """
                             INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
                             VALUES (?, ?, ?)
                             """,
                             (anio, "DQO", est_dqo)
                         )
-                        conn.commit()                      
+                  
                         
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1096,19 +1095,17 @@ with tab_gestion:
 
         if st.button("Guardar analítica"):
             dt = datetime.combine(fecha, hora).strftime("%Y-%m-%d %H:%M:%S")
-            conn.execute(
+            ejecutar_sql(
                 """
                 INSERT OR REPLACE INTO analiticas
                 (datetime, punto, HC, SS, DQO, Sulf)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (dt, punto, hc, ss, dqo, sulf),
+                (dt, punto, hc, ss, dqo, sulf)
             )
             conn.commit()
             st.success("Analítica guardada")
-            
-            
-    
+                            
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
         if not df.empty:
@@ -1119,16 +1116,15 @@ with tab_gestion:
             )
 
             if st.button("Guardar cambios en tabla"):
-                conn.execute("DELETE FROM analiticas")
-                df_edit["datetime"] = pd.to_datetime(
-                    df_edit["datetime"]
-                ).dt.strftime("%Y-%m-%d %H:%M:%S")
+                ejecutar_sql("DELETE FROM analiticas")
+                
+                conn = get_conn()
                 df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
                 conn.commit()
-                st.success("Tabla actualizada")
+                conn.close()
 
-                
-    
+                st.success("Tabla actualizada")
+                    
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
         if not df.empty:
@@ -1144,11 +1140,13 @@ with tab_gestion:
             )
 
             if st.button("Guardar envío a emisario"):
-                conn.execute("DELETE FROM envio_emisario")
-                tabla_edit.to_sql(
-                    "envio_emisario", conn, if_exists="append", index=False
-                )
+                ejecutar_sql("DELETE FROM envio_emisario")
+                
+                conn = get_conn()
+                tabla_edit.to_sql("envio_emisario", conn, if_exists="append", index=False)
                 conn.commit()
+                conn.close()
+
                 st.success("Envío a emisario actualizado")
 
                 
@@ -1191,21 +1189,15 @@ with tab_gestion:
                     except Exception:
                         continue
 
-                    conn.execute(
+                    ejecutar_sql(
                         """
                         INSERT OR REPLACE INTO analiticas
                         (datetime, punto, HC, SS, DQO, Sulf)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (
-                            dt_str,
-                            punto,
-                            r["HC"],
-                            r["SS"],
-                            r["DQO"],
-                            r["Sulf"],
-                        ),
+                        (dt_str, punto, r["HC"], r["SS"], r["DQO"], r["Sulf"])
                     )
+
                     total_insertados += 1
                     conn.commit()
             
