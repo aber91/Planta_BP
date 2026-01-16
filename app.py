@@ -1189,15 +1189,21 @@ with tab_gestion:
         )
 
         # Descargar último backup
-        if backups:
-            ultimo = os.path.join(BACKUP_DIR, backups[0])
-            with open(ultimo, "rb") as f:
-                st.download_button(
-                    "⬇️ Descargar último backup",
-                    data=f,
-                    file_name=backups[0],
-                    mime="application/octet-stream"
-                )
+        with st.expander("💾 Copia de seguridad"):
+        
+            st.info(
+                "La base de datos se guarda en **data/planta.db** "
+                "y se versiona mediante GitHub."
+            )
+        
+            if os.path.exists(DB_PATH):
+                with open(DB_PATH, "rb") as f:
+                    st.download_button(
+                        "⬇️ Descargar base de datos actual",
+                        data=f,
+                        file_name="planta.db",
+                        mime="application/octet-stream"
+                    )
                 
         # --- IMPORTAR / RESTAURAR ---
         uploaded_db = st.file_uploader(
