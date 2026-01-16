@@ -36,19 +36,16 @@ def get_conn():
 conn = get_conn()
 
 def forzar_guardado_sqlite(conn):
+    """
+    Fuerza a SQLite a escribir físicamente el archivo .db en disco
+    sin cerrar la conexión (seguro para Streamlit).
+    """
     try:
-        conn.execute("PRAGMA wal_checkpoint(FULL);")
         conn.commit()
-    except Exception:
-        pass
-
-def cerrar_conexion_sqlite(conn):
-    try:
-        conn.execute("PRAGMA wal_checkpoint(FULL);")
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
+        conn.execute("PRAGMA synchronous=FULL;")
+        conn.execute("PRAGMA journal_mode=DELETE;")
+    except Exception as e:
+        st.warning(f"Error sincronizando BBDD: {e}")
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
@@ -1246,8 +1243,9 @@ with tab_gestion:
                 )
             
             if st.button("🔒 Preparar base de datos para commit Git"):
-                cerrar_conexion_sqlite(conn)
-                st.success("Base de datos cerrada y sincronizada. Ya puedes hacer git commit.")
+                forzar_guardado_sqlite(conn)
+                st.success("Base de datos sincronizada en disco. Ya puedes hacer git commit.")
+
                     
             st.divider()
         
