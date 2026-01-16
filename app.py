@@ -34,20 +34,26 @@ st.sidebar.markdown("### 🗄️ Base de datos en uso")
 st.sidebar.code(DB_PATH)
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE (SIN /tmp, SIN CACHE)
+# CONEXIÓN SQLITE (SIN /tmp, SIN CACHE, SIN CONEXIÓN GLOBAL)
 # -----------------------------------------------------
 def get_conn():
+    """
+    Abre una conexión SQLite REAL sobre data/planta.db
+    y fuerza escritura inmediata en disco.
+    """
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 
-    # Forzar escritura REAL en disco
     conn.execute("PRAGMA journal_mode=DELETE;")
     conn.execute("PRAGMA synchronous=FULL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
 
     return conn
 
-conn = get_conn()
-
 def ejecutar_sql(sql, params=None):
+    """
+    Ejecuta una escritura SQLite de forma segura:
+    abre → ejecuta → commit → cierra
+    """
     conn = get_conn()
     try:
         if params:
@@ -84,6 +90,7 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # ⚠️ IMPORTANTE:
 # - Este bloque se ejecuta UNA SOLA VEZ al arranque
 # - NO volver a crear tablas en otras partes de la app
+# - NO usar conn.execute ni conn.commit aquí
 
 ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS analiticas (
@@ -113,9 +120,6 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
     PRIMARY KEY (anio, parametro)
 )
 """)
-
-# 🔒 Forzar escritura inmediata y liberar locks
-conn.commit()
 
 # =====================================================
 # CARGA DE DATOS
@@ -436,95 +440,71 @@ with tab_dashboard:
                 with col_upa:
                     st.markdown("### 🔮 UPA")
                     st.caption("Última previsión anual · valores persistentes")
-                    
-                    # -------------------------------------------------
-                    # Crear tabla de estimados si no existe (seguridad)
-                    # -------------------------------------------------
-                    conn.execute("""
-                    CREATE TABLE IF NOT EXISTS estimados_upa (
-                        anio INTEGER,
-                        parametro TEXT,
-                        valor REAL,
-                        PRIMARY KEY (anio, parametro)
-                    )
-                    """)
-                    conn.commit()
-                    
-                    # -------------------------------------------------
-                    # Cargar estimados guardados para el año actual
-                    # -------------------------------------------------
-                    df_est = pd.read_sql(
-                        "SELECT * FROM estimados_upa WHERE anio = ?",
-                        conn,
-                        params=(anio,)
-                    )
-                    
-                    def get_estimado(param):
-                        fila = df_est[df_est["parametro"] == param]
-                        if not fila.empty:
-                            return float(fila.iloc[0]["valor"])
-                        return None
-                    
+                
                     # -------------------------------------------------
                     # Días reales considerados
                     # -------------------------------------------------
                     dias_transcurridos = len(df_anual)
                     dias_totales = 365
                     dias_restantes = max(dias_totales - dias_transcurridos, 0)
-                    
+                
                     if dias_transcurridos == 0:
                         st.info("No hay suficientes datos para calcular la UPA.")
                     else:
                         # -------------------------------------------------
-                        # Inputs persistentes
+                        # Cargar estimados persistentes (desde BBDD)
                         # -------------------------------------------------
                         est_hc_guardado = get_estimado("HC")
                         est_dqo_guardado = get_estimado("DQO")
-                    
+                
+                        if est_hc_guardado is None:
+                            est_hc_guardado = float(hc_anual) if hc_anual else 0.0
+                
+                        if est_dqo_guardado is None:
+                            est_dqo_guardado = float(dqo_anual) if dqo_anual else 0.0
+                
+                        # -------------------------------------------------
+                        # Inputs editables (NO guardan automáticamente)
+                        # -------------------------------------------------
                         est_hc = st.number_input(
                             "Estimado HC medio hasta fin de año (ppm)",
                             min_value=0.0,
-                            value=(
-                                est_hc_guardado
-                                if est_hc_guardado is not None
-                                else float(hc_anual) if hc_anual else 0.0
-                            ),
+                            value=float(est_hc_guardado),
                             step=0.1,
                             key="upa_est_hc"
                         )
-                    
+                
                         est_dqo = st.number_input(
                             "Estimado DQO medio hasta fin de año (ppm)",
                             min_value=0.0,
-                            value=(
-                                est_dqo_guardado
-                                if est_dqo_guardado is not None
-                                else float(dqo_anual) if dqo_anual else 0.0
-                            ),
+                            value=float(est_dqo_guardado),
                             step=1.0,
                             key="upa_est_dqo"
                         )
-                    
+                
                         # -------------------------------------------------
-                        # Guardar estimados automáticamente
+                        # Guardar estimados (EXPLÍCITO)
                         # -------------------------------------------------
-                        ejecutar_sql(
-                            """
-                            INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                            VALUES (?, ?, ?)
-                            """,
-                            (anio, "HC", est_hc)
-                        )
-                        
-                        ejecutar_sql(
-                            """
-                            INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                            VALUES (?, ?, ?)
-                            """,
-                            (anio, "DQO", est_dqo)
-                        )
-                  
-                        
+                        if st.button("💾 Guardar estimados UPA"):
+                            ejecutar_sql(
+                                """
+                                INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
+                                VALUES (?, ?, ?)
+                                """,
+                                (anio, "HC", est_hc)
+                            )
+                
+                            ejecutar_sql(
+                                """
+                                INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
+                                VALUES (?, ?, ?)
+                                """,
+                                (anio, "DQO", est_dqo)
+                            )
+                
+                            st.success("Estimados UPA guardados correctamente")
+                            st.rerun()
+                
                         # -------------------------------------------------
                         # Cálculo UPA
                         # -------------------------------------------------
@@ -534,14 +514,14 @@ with tab_dashboard:
                             est_hc,
                             dias_restantes
                         )
-                    
+                
                         upa_dqo = calcular_upa(
                             dqo_anual,
                             dias_transcurridos,
                             est_dqo,
                             dias_restantes
                         )
-                    
+                
                         # -------------------------------------------------
                         # Márgenes respecto al límite anual
                         # -------------------------------------------------
@@ -549,12 +529,12 @@ with tab_dashboard:
                             LIMITES["HC"]["anual"] - upa_hc
                             if upa_hc is not None else None
                         )
-                    
+                
                         margen_dqo = (
                             LIMITES["DQO"]["anual"] - upa_dqo
                             if upa_dqo is not None else None
                         )
-                    
+                
                         # -------------------------------------------------
                         # Salida visual
                         # -------------------------------------------------
@@ -568,7 +548,7 @@ with tab_dashboard:
                         )
                         if margen_hc is not None:
                             st.markdown(texto_margen(margen_hc))
-                    
+                
                         st.metric(
                             "UPA DQO (ppm)",
                             valor_con_semaforo(
@@ -1080,21 +1060,22 @@ with tab_dashboard:
 
 with tab_gestion:
 
-    # ---------- INTRODUCCIÓN MANUAL ----------
+     # ---------- INTRODUCCIÓN MANUAL ----------
     with st.expander("➕ Introducción manual de analítica"):
         c1, c2, c3 = st.columns(3)
-
+    
         fecha = c1.date_input("Fecha")
         hora = c1.time_input("Hora")
         punto = c1.selectbox("Punto", PUNTOS)
-
+    
         hc = c2.number_input("HC")
         ss = c2.number_input("SS")
         dqo = c3.number_input("DQO")
         sulf = c3.number_input("Sulf")
-
+    
         if st.button("Guardar analítica"):
             dt = datetime.combine(fecha, hora).strftime("%Y-%m-%d %H:%M:%S")
+    
             ejecutar_sql(
                 """
                 INSERT OR REPLACE INTO analiticas
@@ -1103,9 +1084,10 @@ with tab_gestion:
                 """,
                 (dt, punto, hc, ss, dqo, sulf)
             )
-            conn.commit()
-            st.success("Analítica guardada")
-                            
+    
+            st.success("Analítica guardada correctamente")
+    
+    
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
         if not df.empty:
@@ -1114,62 +1096,84 @@ with tab_gestion:
                 use_container_width=True,
                 hide_index=True,
             )
-
+    
             if st.button("Guardar cambios en tabla"):
+                # Vaciar tabla
                 ejecutar_sql("DELETE FROM analiticas")
-                
-                conn = get_conn()
-                df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
-                conn.commit()
-                conn.close()
-
-                st.success("Tabla actualizada")
-                    
+    
+                # Reinsertar fila a fila (persistencia garantizada)
+                for _, row in df_edit.iterrows():
+                    ejecutar_sql(
+                        """
+                        INSERT INTO analiticas
+                        (datetime, punto, HC, SS, DQO, Sulf)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row["datetime"],
+                            row["punto"],
+                            row["HC"],
+                            row["SS"],
+                            row["DQO"],
+                            row["Sulf"],
+                        ),
+                    )
+    
+                st.success("Tabla actualizada correctamente")
+    
+    
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
         if not df.empty:
             dias = df[["dia"]].drop_duplicates().sort_values("dia")
+    
             tabla_env = dias.merge(
                 df_envio, on="dia", how="left"
             ).fillna({"envio_emisario": 0})
-
+    
             tabla_edit = st.data_editor(
                 tabla_env,
                 hide_index=True,
                 use_container_width=True,
             )
-
+    
             if st.button("Guardar envío a emisario"):
                 ejecutar_sql("DELETE FROM envio_emisario")
-                
-                conn = get_conn()
-                tabla_edit.to_sql("envio_emisario", conn, if_exists="append", index=False)
-                conn.commit()
-                conn.close()
-
-                st.success("Envío a emisario actualizado")
-
-                
     
+                for _, row in tabla_edit.iterrows():
+                    ejecutar_sql(
+                        """
+                        INSERT INTO envio_emisario (dia, envio_emisario)
+                        VALUES (?, ?)
+                        """,
+                        (
+                            row["dia"].strftime("%Y-%m-%d"),
+                            int(row["envio_emisario"]),
+                        ),
+                    )
+    
+                st.success("Envío a emisario actualizado correctamente")      
+        
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
         st.info("Archivos esperados en /data")
-
+    
         archivos = {
             "entrada_planta.xlsx": "Entrada Planta",
             "x507.xlsx": "X-507",
             "salidafca.xlsx": "Salida FCA",
         }
-
+    
         if st.button("Importar XLSX"):
             total_insertados = 0
-
+    
             for archivo, punto in archivos.items():
                 ruta = os.path.join("data", archivo)
+    
                 if not os.path.exists(ruta):
                     st.warning(f"No encontrado: {archivo}")
                     continue
-
+    
                 df_xls = pd.read_excel(
                     ruta,
                     engine="openpyxl",
@@ -1178,7 +1182,7 @@ with tab_gestion:
                     header=None,
                     skiprows=1,
                 )
-
+    
                 for _, r in df_xls.iterrows():
                     try:
                         dt = datetime.combine(
@@ -1188,24 +1192,30 @@ with tab_gestion:
                         dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
                         continue
-
+    
                     ejecutar_sql(
                         """
                         INSERT OR REPLACE INTO analiticas
                         (datetime, punto, HC, SS, DQO, Sulf)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (dt_str, punto, r["HC"], r["SS"], r["DQO"], r["Sulf"])
+                        (
+                            dt_str,
+                            punto,
+                            r["HC"],
+                            r["SS"],
+                            r["DQO"],
+                            r["Sulf"],
+                        ),
                     )
-
+    
                     total_insertados += 1
-                    conn.commit()
-            
+    
             st.success(
                 f"Importación completada: {total_insertados} registros procesados"
             )
             st.rerun()
-
+    
     # ---------- COPIA DE SEGURIDAD BBDD (GITHUB) ----------
     with st.expander("💾 Copia de seguridad (GitHub)"):
     
