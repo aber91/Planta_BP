@@ -125,15 +125,29 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 # CARGA DE DATOS
 # =====================================================
 
-df = pd.read_sql("SELECT * FROM analiticas", conn, parse_dates=["datetime"])
+conn = get_conn()
+
+df = pd.read_sql(
+    "SELECT * FROM analiticas",
+    conn,
+    parse_dates=["datetime"]
+)
+
 if not df.empty:
     df["dia"] = df["datetime"].dt.date
 else:
     df["dia"] = []
 
-df_envio = pd.read_sql("SELECT * FROM envio_emisario", conn)
+df_envio = pd.read_sql(
+    "SELECT * FROM envio_emisario",
+    conn
+)
+
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+
+# IMPORTANTE: cerrar conexión de lectura
+conn.close()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
