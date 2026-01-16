@@ -122,6 +122,23 @@ def get_estimado(param):
 # FUNCIONES DE NEGOCIO
 # =====================================================
 
+def asegurar_datetime(df):
+    """
+    Garantiza que el DataFrame tiene una columna 'datetime'
+    para ordenación y gráficos.
+    """
+    if "datetime" in df.columns:
+        return df
+
+    df = df.copy()
+
+    if "dia" in df.columns:
+        df["datetime"] = pd.to_datetime(df["dia"])
+        return df
+
+    # Último recurso: no se puede ordenar
+    return df
+
 def analitica_valida_salida_fca(df_in):
     resultados = []
 
@@ -760,13 +777,21 @@ with tab_dashboard:
         # =============================================
         # PUNTO ÚNICO
         # =============================================
+
         else:
             df_p = df_plot[df_plot["punto"] == punto_sel].copy()
-    
+        
             if punto_sel == "Salida FCA":
                 df_p = analitica_valida_salida_fca(df_p)
-    
-            df_p = df_p.sort_values("datetime")
+        
+            # 🔧 Asegurar columna datetime para gráficos
+            df_p = asegurar_datetime(df_p)
+        
+            if "datetime" in df_p.columns:
+                df_p = df_p.sort_values("datetime")
+            else:
+                st.warning("⚠️ No se puede ordenar: falta columna datetime")
+
     
             fig.add_trace(
                 go.Scatter(
