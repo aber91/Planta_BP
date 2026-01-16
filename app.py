@@ -47,13 +47,33 @@ conn = st.session_state.conn
 
 def forzar_guardado_sqlite(conn):
     """
-    Fuerza sincronización a disco sin cerrar la conexión.
-    Necesario para que Git detecte cambios en el archivo .db
+    Fuerza a SQLite a escribir TODO al archivo .db
+    y cierra/reabre la conexión para que Git detecte cambios.
     """
     try:
+        conn.execute("PRAGMA wal_checkpoint(FULL);")
         conn.execute("PRAGMA optimize;")
+        conn.commit()
+    except Exception as e:
+        st.warning(f"Error sincronizando BBDD: {e}")
+
+    # 🔴 PASO CLAVE: cerrar conexión
+    try:
+        conn.close()
     except Exception:
         pass
+
+    # 🔄 Reabrir conexión limpia
+    st.session_state.conn = sqlite3.connect(
+        DB_PATH,
+        check_same_thread=False,
+        isolation_level=None
+    )
+
+    st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
+    st.session_state.conn.execute("PRAGMA synchronous=FULL;")
+    st.session_state.conn.execute("PRAGMA foreign_keys=ON;")
+
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
