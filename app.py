@@ -27,28 +27,23 @@ st.sidebar.code(f"Existe DB: {os.path.exists(DB_PATH)}")
 st.sidebar.code(f"Tamaño DB: {os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'} bytes")
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE (ÚNICA Y PERSISTENTE – STREAMLIT SAFE)
+# CONEXIÓN SQLITE (ÚNICA Y PERSISTENTE)
 # -----------------------------------------------------
-
 if "conn" not in st.session_state:
     st.session_state.conn = sqlite3.connect(
         DB_PATH,
-        check_same_thread=False,
-        isolation_level=None  # 🔑 autocommit REAL
+        check_same_thread=False
     )
-
-    # 🔒 Configuración robusta de SQLite
     st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
     st.session_state.conn.execute("PRAGMA synchronous=FULL;")
     st.session_state.conn.execute("PRAGMA foreign_keys=ON;")
 
 conn = st.session_state.conn
 
-
 def forzar_guardado_sqlite(conn):
     """
-    Fuerza a SQLite a escribir TODO al archivo .db
-    y devuelve una conexión nueva y válida.
+    Fuerza a SQLite a escribir físicamente los datos en disco
+    SIN cerrar la conexión (Streamlit-safe).
     """
     try:
         conn.execute("PRAGMA wal_checkpoint(FULL);")
@@ -56,25 +51,6 @@ def forzar_guardado_sqlite(conn):
         conn.commit()
     except Exception as e:
         st.warning(f"Error sincronizando BBDD: {e}")
-
-    # Cerrar conexión antigua
-    try:
-        conn.close()
-    except Exception:
-        pass
-
-    # Crear y devolver conexión nueva
-    nueva_conn = sqlite3.connect(
-        DB_PATH,
-        check_same_thread=False,
-        isolation_level=None
-    )
-    nueva_conn.execute("PRAGMA journal_mode=DELETE;")
-    nueva_conn.execute("PRAGMA synchronous=FULL;")
-    nueva_conn.execute("PRAGMA foreign_keys=ON;")
-
-    st.session_state.conn = nueva_conn
-    return nueva_conn
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
@@ -96,7 +72,7 @@ st.set_page_config(page_title="Control de analíticas", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
 # =====================================================
-# BASE DE DATOS – ESTRUCTURA
+# BASE DE DATOS – ESTRUCTURA (CREACIÓN SEGURA)
 # =====================================================
 
 conn.execute("""
@@ -115,20 +91,21 @@ CREATE TABLE IF NOT EXISTS analiticas (
 conn.execute("""
 CREATE TABLE IF NOT EXISTS envio_emisario (
     dia TEXT PRIMARY KEY,
-    envio_emisario INTEGER NOT NULL
+    envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0, 1))
 )
 """)
 
 conn.execute("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
-    anio INTEGER,
-    parametro TEXT,
+    anio INTEGER NOT NULL,
+    parametro TEXT NOT NULL,
     valor REAL,
     PRIMARY KEY (anio, parametro)
 )
 """)
 
-conn = forzar_guardado_sqlite(conn)
+# 🔒 Garantizar que la estructura se escribe en disco
+forzar_guardado_sqlite(conn)
 
 # =====================================================
 # CARGA DE DATOS
@@ -461,7 +438,7 @@ with tab_dashboard:
                         PRIMARY KEY (anio, parametro)
                     )
                     """)
-                    conn = forzar_guardado_sqlite(conn)
+                    
                     
                     # -------------------------------------------------
                     # Cargar estimados guardados para el año actual
@@ -539,7 +516,7 @@ with tab_dashboard:
                             (anio, "DQO", est_dqo)
                         )
                     
-                        conn = forzar_guardado_sqlite(conn)
+                        
 
                         forzar_guardado_sqlite(conn)
                         
@@ -1121,7 +1098,7 @@ with tab_gestion:
                 """,
                 (dt, punto, hc, ss, dqo, sulf),
             )
-            conn = forzar_guardado_sqlite(conn)
+            
             st.success("Analítica guardada")
 
             forzar_guardado_sqlite(conn)
@@ -1141,7 +1118,7 @@ with tab_gestion:
                     df_edit["datetime"]
                 ).dt.strftime("%Y-%m-%d %H:%M:%S")
                 df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
-                conn = forzar_guardado_sqlite(conn)
+                
                 st.success("Tabla actualizada")
 
                 forzar_guardado_sqlite(conn)
@@ -1165,7 +1142,7 @@ with tab_gestion:
                 tabla_edit.to_sql(
                     "envio_emisario", conn, if_exists="append", index=False
                 )
-                conn = forzar_guardado_sqlite(conn)
+                
                 st.success("Envío a emisario actualizado")
 
                 forzar_guardado_sqlite(conn)
@@ -1225,7 +1202,7 @@ with tab_gestion:
                     )
                     total_insertados += 1
 
-            conn = forzar_guardado_sqlite(conn)
+            
             st.success(
                 f"Importación completada: {total_insertados} registros procesados"
             )
