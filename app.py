@@ -1249,12 +1249,12 @@ with tab_gestion:
                     cerrar_conexion_sqlite(conn)
                     st.success("Base de datos cerrada y sincronizada. Ya puedes hacer git commit.")
                     
-                    st.divider()
-                
-                    st.info(
-                        "ℹ️ Recomendación: guarda en GitHub al final de cada jornada "
-                        "o tras introducir/modificar analíticas importantes."
-                    )
+        st.divider()
+    
+        st.info(
+            "ℹ️ Recomendación: guarda en GitHub al final de cada jornada "
+            "o tras introducir/modificar analíticas importantes."
+        )
 
         # Descargar último backup
         with st.expander("💾 Copia de seguridad"):
