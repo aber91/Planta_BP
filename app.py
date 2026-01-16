@@ -27,30 +27,33 @@ st.sidebar.code(f"Existe DB: {os.path.exists(DB_PATH)}")
 st.sidebar.code(f"Tamaño DB: {os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'} bytes")
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE
+# CONEXIÓN SQLITE (ÚNICA Y PERSISTENTE – STREAMLIT SAFE)
 # -----------------------------------------------------
-def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 
-    # 🔒 Forzar escritura directa en el archivo .db
-    conn.execute("PRAGMA journal_mode=DELETE;")
-    conn.execute("PRAGMA synchronous=FULL;")
+if "conn" not in st.session_state:
+    st.session_state.conn = sqlite3.connect(
+        DB_PATH,
+        check_same_thread=False,
+        isolation_level=None  # 🔑 autocommit REAL
+    )
 
-    return conn
+    # 🔒 Configuración robusta de SQLite
+    st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
+    st.session_state.conn.execute("PRAGMA synchronous=FULL;")
+    st.session_state.conn.execute("PRAGMA foreign_keys=ON;")
 
-conn = get_conn()
+conn = st.session_state.conn
+
 
 def forzar_guardado_sqlite(conn):
     """
-    Fuerza a SQLite a escribir físicamente el archivo .db en disco
-    sin cerrar la conexión (seguro para Streamlit).
+    Fuerza sincronización a disco sin cerrar la conexión.
+    Necesario para que Git detecte cambios en el archivo .db
     """
     try:
-        conn.commit()
-        conn.execute("PRAGMA synchronous=FULL;")
-        conn.execute("PRAGMA journal_mode=DELETE;")
-    except Exception as e:
-        st.warning(f"Error sincronizando BBDD: {e}")
+        conn.execute("PRAGMA optimize;")
+    except Exception:
+        pass
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
