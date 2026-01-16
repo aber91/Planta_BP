@@ -1197,7 +1197,8 @@ with tab_gestion:
                     data=f,
                     file_name=backups[0],
                     mime="application/octet-stream"
-
+                )
+                
         # --- IMPORTAR / RESTAURAR ---
         uploaded_db = st.file_uploader(
             "📤 Restaurar base de datos desde backup (.db)",
