@@ -48,7 +48,7 @@ conn = st.session_state.conn
 def forzar_guardado_sqlite(conn):
     """
     Fuerza a SQLite a escribir TODO al archivo .db
-    y cierra/reabre la conexión para que Git detecte cambios.
+    y devuelve una conexión nueva y válida.
     """
     try:
         conn.execute("PRAGMA wal_checkpoint(FULL);")
@@ -57,23 +57,24 @@ def forzar_guardado_sqlite(conn):
     except Exception as e:
         st.warning(f"Error sincronizando BBDD: {e}")
 
-    # 🔴 PASO CLAVE: cerrar conexión
+    # Cerrar conexión antigua
     try:
         conn.close()
     except Exception:
         pass
 
-    # 🔄 Reabrir conexión limpia
-    st.session_state.conn = sqlite3.connect(
+    # Crear y devolver conexión nueva
+    nueva_conn = sqlite3.connect(
         DB_PATH,
         check_same_thread=False,
         isolation_level=None
     )
+    nueva_conn.execute("PRAGMA journal_mode=DELETE;")
+    nueva_conn.execute("PRAGMA synchronous=FULL;")
+    nueva_conn.execute("PRAGMA foreign_keys=ON;")
 
-    st.session_state.conn.execute("PRAGMA journal_mode=DELETE;")
-    st.session_state.conn.execute("PRAGMA synchronous=FULL;")
-    st.session_state.conn.execute("PRAGMA foreign_keys=ON;")
-
+    st.session_state.conn = nueva_conn
+    return nueva_conn
 
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 )
 """)
 
-conn.commit()
+conn = forzar_guardado_sqlite(conn)
 
 # =====================================================
 # CARGA DE DATOS
@@ -460,7 +461,7 @@ with tab_dashboard:
                         PRIMARY KEY (anio, parametro)
                     )
                     """)
-                    conn.commit()
+                    conn = forzar_guardado_sqlite(conn)
                     
                     # -------------------------------------------------
                     # Cargar estimados guardados para el año actual
@@ -538,7 +539,7 @@ with tab_dashboard:
                             (anio, "DQO", est_dqo)
                         )
                     
-                        conn.commit()
+                        conn = forzar_guardado_sqlite(conn)
 
                         forzar_guardado_sqlite(conn)
                         
@@ -1120,7 +1121,7 @@ with tab_gestion:
                 """,
                 (dt, punto, hc, ss, dqo, sulf),
             )
-            conn.commit()
+            conn = forzar_guardado_sqlite(conn)
             st.success("Analítica guardada")
 
             forzar_guardado_sqlite(conn)
@@ -1140,7 +1141,7 @@ with tab_gestion:
                     df_edit["datetime"]
                 ).dt.strftime("%Y-%m-%d %H:%M:%S")
                 df_edit.to_sql("analiticas", conn, if_exists="append", index=False)
-                conn.commit()
+                conn = forzar_guardado_sqlite(conn)
                 st.success("Tabla actualizada")
 
                 forzar_guardado_sqlite(conn)
@@ -1164,7 +1165,7 @@ with tab_gestion:
                 tabla_edit.to_sql(
                     "envio_emisario", conn, if_exists="append", index=False
                 )
-                conn.commit()
+                conn = forzar_guardado_sqlite(conn)
                 st.success("Envío a emisario actualizado")
 
                 forzar_guardado_sqlite(conn)
@@ -1224,7 +1225,7 @@ with tab_gestion:
                     )
                     total_insertados += 1
 
-            conn.commit()
+            conn = forzar_guardado_sqlite(conn)
             st.success(
                 f"Importación completada: {total_insertados} registros procesados"
             )
