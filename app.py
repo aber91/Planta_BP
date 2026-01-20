@@ -50,17 +50,33 @@ def get_conn():
     return conn
 
 def ejecutar_sql(sql, params=None):
-    """
-    Ejecuta una escritura SQLite de forma segura:
-    abre → ejecuta → commit → cierra
-    """
     conn = get_conn()
     try:
-        if params:
-            conn.execute(sql, params)
+        if params is not None:
+            # 🔒 Sanitizar parámetros (NaN → None)
+            params_limpios = tuple(
+                None if (isinstance(p, float) and pd.isna(p)) else p
+                for p in params
+            )
+            conn.execute(sql, params_limpios)
         else:
             conn.execute(sql)
+
         conn.commit()
+
+    except sqlite3.ProgrammingError as e:
+        raise RuntimeError(
+            f"""
+❌ ERROR SQL
+
+SQL:
+{sql}
+
+PARAMS:
+{params}
+"""
+        ) from e
+
     finally:
         conn.close()
 
