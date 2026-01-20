@@ -53,12 +53,18 @@ def ejecutar_sql(sql, params=None):
     conn = get_conn()
     try:
         if params is not None:
-            # 🔒 Sanitizar parámetros (NaN → None)
-            params_limpios = tuple(
-                None if (isinstance(p, float) and pd.isna(p)) else p
-                for p in params
-            )
-            conn.execute(sql, params_limpios)
+            params_limpios = []
+            for p in params:
+                # Timestamp → str
+                if hasattr(p, "strftime"):
+                    params_limpios.append(p.strftime("%Y-%m-%d %H:%M:%S"))
+                # NaN → None
+                elif isinstance(p, float) and pd.isna(p):
+                    params_limpios.append(None)
+                else:
+                    params_limpios.append(p)
+
+            conn.execute(sql, tuple(params_limpios))
         else:
             conn.execute(sql)
 
