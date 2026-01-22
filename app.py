@@ -16,6 +16,7 @@ import psycopg2.extras
 
 st.sidebar.markdown("### 🗄️ Base de datos en uso")
 st.sidebar.code("Supabase (PostgreSQL)")
+st.success("psycopg2 cargado correctamente")
 
 # -----------------------------------------------------
 # CONEXIÓN A SUPABASE (PostgreSQL)
