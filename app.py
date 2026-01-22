@@ -1268,22 +1268,22 @@ with tab_gestion:
             )
 
         # Descargar último backup
-           with st.expander("💾 Exportar datos"):
-                conn = get_conn()
-                df_export = pd.read_sql("SELECT * FROM analiticas ORDER BY datetime", conn)
-                conn.close()
-            
-                if not df_export.empty:
-                    csv = df_export.to_csv(index=False).encode("utf-8")
-            
-                    st.download_button(
-                        "⬇️ Descargar analíticas (CSV)",
-                        data=csv,
-                        file_name="analiticas.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.info("No hay datos para exportar.")
+       with st.expander("💾 Exportar datos"):
+            conn = get_conn()
+            df_export = pd.read_sql("SELECT * FROM analiticas ORDER BY datetime", conn)
+            conn.close()
+        
+            if not df_export.empty:
+                csv = df_export.to_csv(index=False).encode("utf-8")
+        
+                st.download_button(
+                    "⬇️ Descargar analíticas (CSV)",
+                    data=csv,
+                    file_name="analiticas.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.info("No hay datos para exportar.")
                 
         # --- IMPORTAR / RESTAURAR ---
         uploaded_db = st.file_uploader(
