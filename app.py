@@ -129,7 +129,7 @@ conn.close()
 conn_est = get_conn()
 
 df_est = pd.read_sql(
-    "SELECT * FROM estimados_upa WHERE anio = ?",
+    "SELECT * FROM estimados_upa WHERE anio = %s",
     conn_est,
     params=(anio,)
 )
