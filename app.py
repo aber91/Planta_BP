@@ -20,8 +20,9 @@ import os
 import sqlite3
 from datetime import date
 
-st.write("Secrets completos:", st.secrets)
-
+st.write("🔐 st.secrets completo:")
+st.write(st.secrets)
+st.stop()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
