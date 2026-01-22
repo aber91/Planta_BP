@@ -16,73 +16,26 @@ import calendar
 # =====================================================
 
 import psycopg2
+import psycopg2.extras
 import streamlit as st
 
-try:
-    conn = psycopg2.connect(
+def get_conn():
+    return psycopg2.connect(
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
         dbname=st.secrets["DB_NAME"],
         user=st.secrets["DB_USER"],
         password=st.secrets["DB_PASSWORD"],
-        connect_timeout=5
+        sslmode=st.secrets["DB_SSLMODE"],
+        cursor_factory=psycopg2.extras.RealDictCursor,
     )
-    st.success("✅ Conectado correctamente a Supabase")
-    conn.close()
-except Exception as e:
-    st.error("❌ Error de conexión")
-    st.code(str(e))
 
-
-# -----------------------------------------------------
-# CONEXIÓN A SUPABASE (PostgreSQL)
-# -----------------------------------------------------
-def get_conn():
-    try:
-        conn = psycopg2.connect(
-            host=st.secrets["DB_HOST"],
-            database=st.secrets["DB_NAME"],
-            user=st.secrets["DB_USER"],
-            password=st.secrets["DB_PASSWORD"],
-            port=int(st.secrets["DB_PORT"]),
-            sslmode="require",
-        )
-        return conn
-    except Exception as e:
-        st.error("❌ Error conectando a Supabase")
-        st.code(str(e))
-        st.stop()
-
-# -----------------------------------------------------
-# EJECUCIÓN SQL SEGURA
-# -----------------------------------------------------
-def ejecutar_sql(sql, params=None, fetch=False):
+def ejecutar_sql(sql, params=None):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            if fetch:
-                result = cur.fetchall()
-            else:
-                result = None
         conn.commit()
-        return result
-    except Exception as e:
-        conn.rollback()
-        raise RuntimeError(
-            f"""
-❌ ERROR SQL (SUPABASE)
-
-SQL:
-{sql}
-
-PARAMS:
-{params}
-
-ERROR:
-{e}
-"""
-        )
     finally:
         conn.close()
 
