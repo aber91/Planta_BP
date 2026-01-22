@@ -16,10 +16,23 @@ import calendar
 # =====================================================
 
 import psycopg2
-import psycopg2.extras
+import streamlit as st
 
-st.sidebar.markdown("### 🗄️ Base de datos en uso")
-st.sidebar.code("Supabase · PostgreSQL")
+try:
+    conn = psycopg2.connect(
+        host=st.secrets["DB_HOST"],
+        port=st.secrets["DB_PORT"],
+        dbname=st.secrets["DB_NAME"],
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        connect_timeout=5
+    )
+    st.success("✅ Conectado correctamente a Supabase")
+    conn.close()
+except Exception as e:
+    st.error("❌ Error de conexión")
+    st.code(str(e))
+
 
 # -----------------------------------------------------
 # CONEXIÓN A SUPABASE (PostgreSQL)
