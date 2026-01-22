@@ -1,88 +1,67 @@
 # =====================================================
-# app.py – v2.6 COMPLETO, ESTABLE Y UX LIMPIO
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime, date, timedelta
-import os
-import sqlite3
-import subprocess
-import altair as alt
-import plotly.graph_objects as go
-import calendar
+import psycopg2
+import psycopg2.extras
 
-# =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA (DEFINITIVA)
-# =====================================================
-
-import os
-import sqlite3
-from datetime import date
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 📁 Carpeta persistente dentro del repo
-PERSISTENT_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(PERSISTENT_DIR, exist_ok=True)
-
-# 📄 Base de datos SIEMPRE en el repo
-DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
-
-# 🔎 DEBUG visible
 st.sidebar.markdown("### 🗄️ Base de datos en uso")
-st.sidebar.code(DB_PATH)
+st.sidebar.code("Supabase (PostgreSQL)")
 
 # -----------------------------------------------------
-# CONEXIÓN SQLITE (SIN /tmp, SIN CACHE, SIN CONEXIÓN GLOBAL)
+# CONEXIÓN A SUPABASE (PostgreSQL)
 # -----------------------------------------------------
 def get_conn():
     """
-    Abre una conexión SQLite REAL sobre data/planta.db
-    y fuerza escritura inmediata en disco.
+    Abre una conexión nueva a Supabase.
+    NO cachear.
+    Abrir → usar → cerrar.
     """
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    return psycopg2.connect(
+        host=st.secrets["supabase"]["host"],
+        database=st.secrets["supabase"]["database"],
+        user=st.secrets["supabase"]["user"],
+        password=st.secrets["supabase"]["password"],
+        port=st.secrets["supabase"]["port"],
+        sslmode="require",
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
 
-    conn.execute("PRAGMA journal_mode=DELETE;")
-    conn.execute("PRAGMA synchronous=FULL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-
-    return conn
-
-def ejecutar_sql(sql, params=None):
+# -----------------------------------------------------
+# EJECUCIÓN SQL SEGURA Y PERSISTENTE
+# -----------------------------------------------------
+def ejecutar_sql(sql, params=None, fetch=False):
+    """
+    Ejecuta SQL contra Supabase.
+    - fetch=False → INSERT / UPDATE / DELETE
+    - fetch=True  → SELECT (devuelve lista de dicts)
+    """
     conn = get_conn()
     try:
-        if params is not None:
-            params_limpios = []
-            for p in params:
-                # Timestamp → str
-                if hasattr(p, "strftime"):
-                    params_limpios.append(p.strftime("%Y-%m-%d %H:%M:%S"))
-                # NaN → None
-                elif isinstance(p, float) and pd.isna(p):
-                    params_limpios.append(None)
-                else:
-                    params_limpios.append(p)
-
-            conn.execute(sql, tuple(params_limpios))
-        else:
-            conn.execute(sql)
-
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            if fetch:
+                resultado = cur.fetchall()
+            else:
+                resultado = None
         conn.commit()
-
-    except sqlite3.ProgrammingError as e:
+        return resultado
+    except Exception as e:
+        conn.rollback()
         raise RuntimeError(
             f"""
-❌ ERROR SQL
+❌ ERROR SQL (SUPABASE)
 
 SQL:
 {sql}
 
 PARAMS:
 {params}
-"""
-        ) from e
 
+ERROR:
+{e}
+"""
+        )
     finally:
         conn.close()
 
