@@ -3,7 +3,7 @@
 # =====================================================
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
+from ts import ts, date, timedelta
 import os
 import sqlite3
 import subprocess
@@ -17,7 +17,9 @@ import calendar
 
 import psycopg2
 import psycopg2.extras
-import streamlit as st
+
+st.write("Conexión OK a Neon")
+st.stop()        
 
 def get_conn():
     return psycopg2.connect(
@@ -69,31 +71,31 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
 ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS analiticas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    datetime TEXT NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMP NOT NULL,
     punto TEXT NOT NULL,
-    HC REAL,
-    SS REAL,
-    DQO REAL,
-    Sulf REAL,
-    UNIQUE(datetime, punto)
-)
+    HC DOUBLE PRECISION,
+    SS DOUBLE PRECISION,
+    DQO DOUBLE PRECISION,
+    Sulf DOUBLE PRECISION,
+    UNIQUE (ts, punto)
+);
 """)
 
 ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS envio_emisario (
-    dia TEXT PRIMARY KEY,
-    envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0, 1))
-)
+    dia DATE PRIMARY KEY,
+    envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0,1))
+);
 """)
 
 ejecutar_sql("""
 CREATE TABLE IF NOT EXISTS estimados_upa (
     anio INTEGER NOT NULL,
     parametro TEXT NOT NULL,
-    valor REAL NOT NULL,
+    valor DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (anio, parametro)
-)
+);
 """)
 
 # =====================================================
@@ -105,11 +107,11 @@ conn = get_conn()
 df = pd.read_sql(
     "SELECT * FROM analiticas",
     conn,
-    parse_dates=["datetime"]
+    parse_dates=["ts"]
 )
 
 if not df.empty:
-    df["dia"] = df["datetime"].dt.date
+    df["dia"] = df["ts"].dt.date
 else:
     df["dia"] = []
 
@@ -119,7 +121,7 @@ df_envio = pd.read_sql(
 )
 
 if not df_envio.empty:
-    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+    df_envio["dia"] = pd.to_ts(df_envio["dia"]).dt.date
 
 # IMPORTANTE: cerrar conexión de lectura
 conn.close()
@@ -147,18 +149,18 @@ def get_estimado(param):
 # FUNCIONES DE NEGOCIO
 # =====================================================
 
-def asegurar_datetime(df):
+def asegurar_ts(df):
     """
-    Garantiza que el DataFrame tiene una columna 'datetime'
+    Garantiza que el DataFrame tiene una columna 'ts'
     para ordenación y gráficos.
     """
-    if "datetime" in df.columns:
+    if "ts" in df.columns:
         return df
 
     df = df.copy()
 
     if "dia" in df.columns:
-        df["datetime"] = pd.to_datetime(df["dia"])
+        df["ts"] = pd.to_ts(df["dia"])
         return df
 
     # Último recurso: no se puede ordenar
@@ -167,14 +169,14 @@ def asegurar_datetime(df):
 def analitica_valida_salida_fca(df_in):
     resultados = []
 
-    for dia, g in df_in.sort_values("datetime").groupby("dia"):
+    for dia, g in df_in.sort_values("ts").groupby("dia"):
         if len(g) == 1:
             resultados.append(g.iloc[-1])
         else:
             ult = g.iloc[-1]
             pen = g.iloc[-2]
 
-            if (ult["datetime"] - pen["datetime"]).total_seconds() <= 60:
+            if (ult["ts"] - pen["ts"]).total_seconds() <= 60:
                 fila = ult.copy()
                 for p in PARAMETROS:
                     vals = [ult[p], pen[p]]
@@ -265,7 +267,7 @@ def calcular_eficiencias_diarias(df, parametro):
         for punto in ["Entrada Planta", "X-507", "Salida FCA"]:
             df_p = g[g["punto"] == punto]
             if not df_p.empty:
-                valores[punto] = df_p.sort_values("datetime").iloc[-1][parametro]
+                valores[punto] = df_p.sort_values("ts").iloc[-1][parametro]
 
         def eficiencia(cin, cout):
             if cin is None or cout is None or cin == 0:
@@ -310,7 +312,7 @@ def diagnostico_filtros_fca(df_plot, parametro):
         return resultado
 
     df_salida = analitica_valida_salida_fca(df_salida)
-    df_salida = df_salida.sort_values("datetime")
+    df_salida = df_salida.sort_values("ts")
 
     # --- EMA 7 ---
     df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
@@ -330,7 +332,7 @@ def diagnostico_filtros_fca(df_plot, parametro):
     df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
     entrada_estable = True
     if not df_ent.empty:
-        ent_vals = df_ent.sort_values("datetime")[parametro].tail(5)
+        ent_vals = df_ent.sort_values("ts")[parametro].tail(5)
         if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
             entrada_estable = False
 
@@ -663,11 +665,11 @@ with tab_dashboard:
     else:
         # Aplicar lógica de analítica válida por día
         df_val = analitica_valida_salida_fca(df_salida)
-        df_val = df_val.sort_values("datetime")
+        df_val = df_val.sort_values("ts")
     
         ultima = df_val.iloc[-1]
     
-        fecha_txt = ultima["datetime"].strftime("%d/%m/%Y %H:%M")
+        fecha_txt = ultima["ts"].strftime("%d/%m/%Y %H:%M")
     
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("HC", ultima["HC"])
@@ -724,18 +726,18 @@ with tab_dashboard:
     # Filtrado temporal
     # -------------------------------------------------
     df_plot = df.copy()
-    now = datetime.now()
+    now = ts.now()
     
     if periodo_sel == "Últimos 7 días":
-        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=7)]
+        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=7)]
     elif periodo_sel == "Últimos 30 días":
-        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=30)]
+        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=30)]
     elif periodo_sel == "Mes actual":
-        df_plot = df_plot[df_plot["datetime"] >= now.replace(day=1)]
+        df_plot = df_plot[df_plot["ts"] >= now.replace(day=1)]
     elif periodo_sel == "Rango personalizado" and f_ini and f_fin:
         df_plot = df_plot[
-            (df_plot["datetime"] >= pd.to_datetime(f_ini)) &
-            (df_plot["datetime"] <= pd.to_datetime(f_fin))
+            (df_plot["ts"] >= pd.to_ts(f_ini)) &
+            (df_plot["ts"] <= pd.to_ts(f_fin))
         ]
     
     # -------------------------------------------------
@@ -776,7 +778,7 @@ with tab_dashboard:
     
                 fig.add_trace(
                     go.Scatter(
-                        x=df_p["datetime"],
+                        x=df_p["ts"],
                         y=df_p[param_sel],
                         mode="lines+markers",
                         name=p,
@@ -794,19 +796,19 @@ with tab_dashboard:
             if punto_sel == "Salida FCA":
                 df_p = analitica_valida_salida_fca(df_p)
         
-            # 🔧 Asegurar columna datetime para gráficos
-            df_p = asegurar_datetime(df_p)
+            # 🔧 Asegurar columna ts para gráficos
+            df_p = asegurar_ts(df_p)
         
-            if "datetime" in df_p.columns:
-                df_p = df_p.sort_values("datetime")
+            if "ts" in df_p.columns:
+                df_p = df_p.sort_values("ts")
             else:
-                st.warning("⚠️ No se puede ordenar: falta columna datetime")   
+                st.warning("⚠️ No se puede ordenar: falta columna ts")   
 
-            if not df_p.empty and "datetime" in df_p.columns:
+            if not df_p.empty and "ts" in df_p.columns:
             
                 fig.add_trace(
                     go.Scatter(
-                        x=df_p["datetime"],
+                        x=df_p["ts"],
                         y=df_p[param_sel],
                         mode="lines+markers",
                         name=punto_sel
@@ -826,7 +828,7 @@ with tab_dashboard:
     
                 fig.add_trace(
                     go.Scatter(
-                        x=df_p["datetime"],
+                        x=df_p["ts"],
                         y=df_p["EMA7"],
                         mode="lines",
                         name="EMA 7",
@@ -988,7 +990,7 @@ with tab_dashboard:
             return resultado
     
         df_salida = analitica_valida_salida_fca(df_salida)
-        df_salida = df_salida.sort_values("datetime")
+        df_salida = df_salida.sort_values("ts")
     
         # ---------- EMA 7 ----------
         df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
@@ -1008,7 +1010,7 @@ with tab_dashboard:
         df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
         entrada_estable = True
         if not df_ent.empty:
-            ent_vals = df_ent.sort_values("datetime")[parametro].tail(5)
+            ent_vals = df_ent.sort_values("ts")[parametro].tail(5)
             if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
                 entrada_estable = False
     
@@ -1077,12 +1079,12 @@ with tab_gestion:
         sulf = c3.number_input("Sulf")
     
         if st.button("Guardar analítica"):
-            dt = datetime.combine(fecha, hora).strftime("%Y-%m-%d %H:%M:%S")
+            dt = ts.combine(fecha, hora).strftime("%Y-%m-%d %H:%M:%S")
     
             ejecutar_sql(
                 """
                 INSERT OR REPLACE INTO analiticas
-                (datetime, punto, HC, SS, DQO, Sulf)
+                (ts, punto, HC, SS, DQO, Sulf)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (dt, punto, hc, ss, dqo, sulf)
@@ -1109,11 +1111,11 @@ with tab_gestion:
                     ejecutar_sql(
                         """
                         INSERT INTO analiticas
-                        (datetime, punto, HC, SS, DQO, Sulf)
+                        (ts, punto, HC, SS, DQO, Sulf)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         (
-                            row["datetime"],
+                            row["ts"],
                             row["punto"],
                             row["HC"],
                             row["SS"],
@@ -1188,9 +1190,9 @@ with tab_gestion:
     
                 for _, r in df_xls.iterrows():
                     try:
-                        dt = datetime.combine(
-                            pd.to_datetime(r["Fecha"]).date(),
-                            pd.to_datetime(r["Hora"]).time(),
+                        dt = ts.combine(
+                            pd.to_ts(r["Fecha"]).date(),
+                            pd.to_ts(r["Hora"]).time(),
                         )
                         dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
@@ -1199,7 +1201,7 @@ with tab_gestion:
                     ejecutar_sql(
                         """
                         INSERT OR REPLACE INTO analiticas
-                        (datetime, punto, HC, SS, DQO, Sulf)
+                        (ts, punto, HC, SS, DQO, Sulf)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         (
