@@ -25,19 +25,20 @@ st.sidebar.code("Supabase · PostgreSQL")
 # CONEXIÓN A SUPABASE (PostgreSQL)
 # -----------------------------------------------------
 def get_conn():
-    """
-    Abre una conexión nueva a Supabase usando secrets planos.
-    Abrir → usar → cerrar (NO cachear).
-    """
-    return psycopg2.connect(
-        host=st.secrets["DB_HOST"],
-        database=st.secrets["DB_NAME"],
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        port=st.secrets["DB_PORT"],
-        sslmode="require",
-        cursor_factory=psycopg2.extras.RealDictCursor,
-    )
+    try:
+        conn = psycopg2.connect(
+            host=st.secrets["DB_HOST"],
+            database=st.secrets["DB_NAME"],
+            user=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            port=int(st.secrets["DB_PORT"]),
+            sslmode="require",
+        )
+        return conn
+    except Exception as e:
+        st.error("❌ Error conectando a Supabase")
+        st.code(str(e))
+        st.stop()
 
 # -----------------------------------------------------
 # EJECUCIÓN SQL SEGURA
