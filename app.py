@@ -20,10 +20,6 @@ import os
 import sqlite3
 from datetime import date
 
-st.write(st.secrets)
-st.stop()
-
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 📁 Carpeta persistente dentro del repo
