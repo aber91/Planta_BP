@@ -20,8 +20,8 @@ import os
 import sqlite3
 from datetime import date
 
-st.write("DB:", st.secrets["supabase"]["database"])
-st.write("HOST:", st.secrets["supabase"]["host"])
+st.write("Secrets completos:", st.secrets)
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
