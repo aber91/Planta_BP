@@ -723,7 +723,7 @@ with tab_dashboard:
     # Filtrado temporal
     # -------------------------------------------------
     df_plot = df.copy()
-    now = ts.now()
+    now = datetime.now() 
     
     if periodo_sel == "Últimos 7 días":
         df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=7)]
