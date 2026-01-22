@@ -1,6 +1,3 @@
-# =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
-# =====================================================
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -10,13 +7,12 @@ import subprocess
 import altair as alt
 import plotly.graph_objects as go
 import calendar
+import psycopg2
+import psycopg2.extras   
 
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
-
-import psycopg2
-import psycopg2.extras   
 
 def get_conn():
     return psycopg2.connect(
@@ -1272,21 +1268,22 @@ with tab_gestion:
             )
 
         # Descargar último backup
-        with st.expander("💾 Copia de seguridad"):
-        
-            st.info(
-                "La base de datos se guarda en **data/planta.db** "
-                "y se versiona mediante GitHub."
-            )
-        
-            if os.path.exists(DB_PATH):
-                with open(DB_PATH, "rb") as f:
+           with st.expander("💾 Exportar datos"):
+                conn = get_conn()
+                df_export = pd.read_sql("SELECT * FROM analiticas ORDER BY datetime", conn)
+                conn.close()
+            
+                if not df_export.empty:
+                    csv = df_export.to_csv(index=False).encode("utf-8")
+            
                     st.download_button(
-                        "⬇️ Descargar base de datos actual",
-                        data=f,
-                        file_name="planta.db",
-                        mime="application/octet-stream"
+                        "⬇️ Descargar analíticas (CSV)",
+                        data=csv,
+                        file_name="analiticas.csv",
+                        mime="text/csv"
                     )
+                else:
+                    st.info("No hay datos para exportar.")
                 
         # --- IMPORTAR / RESTAURAR ---
         uploaded_db = st.file_uploader(
