@@ -13,6 +13,8 @@ import calendar
 
 import psycopg2
 import psycopg2.extras
+st.write("🔐 Secrets cargados:", st.secrets)
+st.stop()
 
 st.sidebar.markdown("### 🗄️ Base de datos en uso")
 st.sidebar.code("Supabase (PostgreSQL)")
