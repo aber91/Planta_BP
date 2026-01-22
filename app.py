@@ -11,53 +11,48 @@ import altair as alt
 import plotly.graph_objects as go
 import calendar
 
+# =====================================================
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
+# =====================================================
+
 import psycopg2
 import psycopg2.extras
-st.write("🔐 Secrets cargados:", st.secrets)
-st.stop()
 
 st.sidebar.markdown("### 🗄️ Base de datos en uso")
-st.sidebar.code("Supabase (PostgreSQL)")
-st.success("psycopg2 cargado correctamente")
+st.sidebar.code("Supabase · PostgreSQL")
 
 # -----------------------------------------------------
 # CONEXIÓN A SUPABASE (PostgreSQL)
 # -----------------------------------------------------
 def get_conn():
     """
-    Abre una conexión nueva a Supabase.
-    NO cachear.
-    Abrir → usar → cerrar.
+    Abre una conexión nueva a Supabase usando secrets planos.
+    Abrir → usar → cerrar (NO cachear).
     """
     return psycopg2.connect(
-        host=st.secrets["supabase"]["host"],
-        database=st.secrets["supabase"]["database"],
-        user=st.secrets["supabase"]["user"],
-        password=st.secrets["supabase"]["password"],
-        port=st.secrets["supabase"]["port"],
+        host=st.secrets["DB_HOST"],
+        database=st.secrets["DB_NAME"],
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        port=st.secrets["DB_PORT"],
         sslmode="require",
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
 # -----------------------------------------------------
-# EJECUCIÓN SQL SEGURA Y PERSISTENTE
+# EJECUCIÓN SQL SEGURA
 # -----------------------------------------------------
 def ejecutar_sql(sql, params=None, fetch=False):
-    """
-    Ejecuta SQL contra Supabase.
-    - fetch=False → INSERT / UPDATE / DELETE
-    - fetch=True  → SELECT (devuelve lista de dicts)
-    """
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             if fetch:
-                resultado = cur.fetchall()
+                result = cur.fetchall()
             else:
-                resultado = None
+                result = None
         conn.commit()
-        return resultado
+        return result
     except Exception as e:
         conn.rollback()
         raise RuntimeError(
