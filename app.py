@@ -16,10 +16,7 @@ import calendar
 # =====================================================
 
 import psycopg2
-import psycopg2.extras
-
-st.write("Conexión OK a Neon")
-st.stop()        
+import psycopg2.extras   
 
 def get_conn():
     return psycopg2.connect(
