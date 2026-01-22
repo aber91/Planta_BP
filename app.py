@@ -1,6 +1,15 @@
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
+import streamlit as st
+import pandas as pd
+from datetime import datetime, date, timedelta
+import os
+import sqlite3
+import subprocess
+import altair as alt
+import plotly.graph_objects as go
+import calendar
 
 import psycopg2
 import psycopg2.extras
