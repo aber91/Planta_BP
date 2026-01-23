@@ -2,7 +2,7 @@ import sqlite3
 import psycopg2
 
 # --- SQLite ---
-sqlite_conn = sqlite3.connect("planta.db")
+sqlite_conn = sqlite3.connect("data/planta.db")
 sqlite_cur = sqlite_conn.cursor()
 
 # --- PostgreSQL (Neon) ---
