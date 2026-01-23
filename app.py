@@ -34,6 +34,16 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
+# =====================================================
+# RUTA ÚNICA DE BASE DE DATOS SQLITE
+# =====================================================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PERSISTENT_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(PERSISTENT_DIR, exist_ok=True)
+
+DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
+
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
@@ -1233,7 +1243,6 @@ with tab_gestion:
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
         # -------------------------------------------------
-        # ---------- EXPORTAR BASE DE DATOS ----------
         with st.expander("💾 Exportar base de datos (.db)"):
         
             if os.path.exists(DB_PATH):
@@ -1246,6 +1255,7 @@ with tab_gestion:
                     )
             else:
                 st.warning("No existe ninguna base de datos para exportar.")
+
     
         # ---------- IMPORTAR / RESTAURAR BASE DE DATOS ----------
         with st.expander("📤 Restaurar base de datos (.db)"):
@@ -1260,22 +1270,21 @@ with tab_gestion:
         
                 if st.button("🔁 Restaurar base de datos"):
                     try:
-                        # Cerrar posibles conexiones abiertas
+                        # Cerrar conexiones si existen
                         try:
                             conn = get_conn()
                             conn.close()
                         except Exception:
                             pass
         
-                        # Escribir el nuevo archivo .db
                         with open(DB_PATH, "wb") as f:
                             f.write(uploaded_db.read())
         
                         st.success("✅ Base de datos restaurada correctamente.")
                         st.info("🔄 La aplicación se recargará ahora.")
-        
                         st.rerun()
         
                     except Exception as e:
                         st.error(f"❌ Error restaurando la base de datos: {e}")
+
 
