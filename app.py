@@ -1214,68 +1214,36 @@ with tab_gestion:
             )
             st.rerun()
     
-    # ---------- COPIA DE SEGURIDAD BBDD (GITHUB) ----------
-    with st.expander("💾 Copia de seguridad (GitHub)"):
+    # ---------- COPIA DE SEGURIDAD BBDD ----------
+    with st.expander("💾 Copia de seguridad y persistencia de datos"):
     
         st.markdown(
             """
-            La base de datos **planta.db** se guarda directamente en el repositorio GitHub.
-            
-            ✔️ Los datos **no se pierden al reiniciar la app**  
-            ✔️ GitHub actúa como **backup histórico**  
-            ✔️ Se puede volver a versiones anteriores si es necesario
+            ### 🔐 Persistencia de datos (Supabase)
+    
+            ✔️ Los datos se almacenan en **Supabase (PostgreSQL)**  
+            ✔️ **No se pierden al reiniciar la app**  
+            ✔️ Copias de seguridad gestionadas por Supabase  
+            ✔️ Exportación / importación manual mediante CSV
             """
         )
     
         st.divider()
     
-        with st.expander("💾 Persistencia de datos"):
-            st.info(
-                """
-                ℹ️ Los datos se guardan en el archivo **planta.db** dentro del repositorio.
-        
-                Para que los datos persistan tras reiniciar la aplicación,
-                es necesario confirmar los cambios en GitHub manualmente:
-        
-                ```bash
-                git pull --rebase
-                git add data/planta.db
-                git commit -m "Actualizar base de datos analíticas"
-                git push
-
-                ```
-                """
-            )
-
-            st.info(
-                    """
-                    ℹ️ Los datos se guardan en **data/planta.db**.
-                    Antes de hacer commit en GitHub, pulsa el botón:
-                    """
-                )
-            
-            if st.button("🔒 Preparar base de datos para commit Git"):
-                st.success(
-                    "ℹ️ La base de datos ya está sincronizada.\n\n"
-                    "Si vas a hacer commit, detén la app o reiníciala antes."
-                )
-                               
-            st.divider()
-        
-            st.info(
-                "ℹ️ Recomendación: guarda en GitHub al final de cada jornada "
-                "o tras introducir/modificar analíticas importantes."
-            )
-
-        # Descargar último backup
-       with st.expander("💾 Exportar datos"):
+        # -------------------------------------------------
+        # 📤 EXPORTAR DATOS (CSV)
+        # -------------------------------------------------
+        with st.expander("⬇️ Exportar datos (CSV)"):
             conn = get_conn()
-            df_export = pd.read_sql("SELECT * FROM analiticas ORDER BY datetime", conn)
+            df_export = pd.read_sql(
+                "SELECT * FROM analiticas ORDER BY datetime",
+                conn
+            )
             conn.close()
-        
+    
             if not df_export.empty:
                 csv = df_export.to_csv(index=False).encode("utf-8")
-        
+    
                 st.download_button(
                     "⬇️ Descargar analíticas (CSV)",
                     data=csv,
@@ -1284,23 +1252,51 @@ with tab_gestion:
                 )
             else:
                 st.info("No hay datos para exportar.")
-                
-        # --- IMPORTAR / RESTAURAR ---
-        uploaded_db = st.file_uploader(
-            "📤 Restaurar base de datos desde backup (.db)",
-            type=["db"],
-            key="upload_db_backup"
-        )
-
-        if uploaded_db is not None:
-            st.warning(
-                "⚠️ Esta acción sobrescribirá TODOS los datos actuales."
+    
+        # -------------------------------------------------
+        # 📥 IMPORTAR DATOS (CSV)
+        # -------------------------------------------------
+        with st.expander("📥 Importar datos (CSV)"):
+            uploaded_csv = st.file_uploader(
+                "Sube un archivo CSV con analíticas",
+                type=["csv"],
+                key="upload_csv_backup"
             )
-
-            if st.button("🔁 Restaurar base de datos", key="restore_db_btn"):
-                with open(DB_PATH, "wb") as f:
-                    f.write(uploaded_db.read())
-
-                st.success("Base de datos restaurada correctamente.")
-                st.info("La aplicación se recargará para aplicar los cambios.")
-                st.rerun()
+    
+            if uploaded_csv is not None:
+                df_import = pd.read_csv(uploaded_csv)
+    
+                st.write("Vista previa:")
+                st.dataframe(df_import.head())
+    
+                if st.button("📥 Importar datos a la base de datos"):
+                    conn = get_conn()
+                    cur = conn.cursor()
+    
+                    for _, r in df_import.iterrows():
+                        cur.execute(
+                            """
+                            INSERT INTO analiticas (datetime, punto, HC, SS, DQO, Sulf)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (datetime, punto) DO UPDATE
+                            SET HC = EXCLUDED.HC,
+                                SS = EXCLUDED.SS,
+                                DQO = EXCLUDED.DQO,
+                                Sulf = EXCLUDED.Sulf
+                            """,
+                            (
+                                r["datetime"],
+                                r["punto"],
+                                r.get("HC"),
+                                r.get("SS"),
+                                r.get("DQO"),
+                                r.get("Sulf"),
+                            )
+                        )
+    
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+    
+                    st.success("Datos importados correctamente.")
+                    st.rerun()
