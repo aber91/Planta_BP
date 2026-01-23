@@ -16,7 +16,10 @@ pg_conn = psycopg2.connect(
 pg_cur = pg_conn.cursor()
 
 # --- Migrar analiticas ---
-sqlite_cur.execute("SELECT datetime, punto, HC, SS, DQO, Sulf FROM analiticas")
+sqlite_cur.execute("""
+    SELECT datetime, punto, HC, SS, DQO, Sulf FROM analiticas
+""")
+
 rows = sqlite_cur.fetchall()
 
 pg_cur.execute("DELETE FROM analiticas")
@@ -24,10 +27,10 @@ pg_cur.execute("DELETE FROM analiticas")
 for r in rows:
     pg_cur.execute(
         """
-        INSERT INTO analiticas (datetime, punto, hc, ss, dqo, sulf)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO analiticas (datetime, ts, punto, hc, ss, dqo, sulf)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
-        r
+        (r[0], r[0], r[1], r[2], r[3], r[4], r[5])
     )
 
 pg_conn.commit()
