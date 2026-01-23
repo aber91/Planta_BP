@@ -1235,15 +1235,20 @@ with tab_gestion:
         # -------------------------------------------------
         with st.expander("⬇️ Exportar datos (CSV)"):
             conn = get_conn()
-            df_export = pd.read_sql(
-                "SELECT * FROM analiticas ORDER BY datetime",
-                conn
-            )
+            cur = conn.cursor()
+        
+            cur.execute("SELECT * FROM analiticas ORDER BY datetime")
+            rows = cur.fetchall()
+            cols = [desc[0] for desc in cur.description]
+        
+            df_export = pd.DataFrame(rows, columns=cols)
+        
+            cur.close()
             conn.close()
-    
+        
             if not df_export.empty:
                 csv = df_export.to_csv(index=False).encode("utf-8")
-    
+        
                 st.download_button(
                     "⬇️ Descargar analíticas (CSV)",
                     data=csv,
