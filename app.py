@@ -34,22 +34,6 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
-conn = get_conn()
-cur = conn.cursor()
-
-cur.execute("""
-    SELECT column_name, data_type
-    FROM information_schema.columns
-    WHERE table_name = 'analiticas'
-    ORDER BY ordinal_position
-""")
-
-st.write("📋 Columnas reales en analiticas:", cur.fetchall())
-
-cur.close()
-conn.close()
-
-
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
@@ -1253,7 +1237,7 @@ with tab_gestion:
             conn = get_conn()
             cur = conn.cursor()
             
-            cur.execute('SELECT * FROM analiticas ORDER BY "datetime"')
+            cur.execute("SELECT * FROM analiticas ORDER BY id")
             rows = cur.fetchall()
             cols = [desc[0] for desc in cur.description]
             
