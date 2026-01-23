@@ -550,7 +550,7 @@ with tab_dashboard:
                                 ejecutar_sql(
                                     """
                                     INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                                    VALUES (?, ?, ?)
+                                    VALUES (%s, %s, %s)
                                     """,
                                     (anio, "HC", est_hc_sql)
                                 )
@@ -559,7 +559,7 @@ with tab_dashboard:
                                 ejecutar_sql(
                                     """
                                     INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                                    VALUES (?, ?, ?)
+                                    VALUES (%s, %s, %s)
                                     """,
                                     (anio, "DQO", est_dqo_sql)
                                 )
@@ -1145,7 +1145,7 @@ with tab_gestion:
                 """
                 INSERT OR REPLACE INTO analiticas
                 (ts, punto, HC, SS, DQO, Sulf)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (dt, punto, hc, ss, dqo, sulf)
             )
@@ -1172,7 +1172,7 @@ with tab_gestion:
                         """
                         INSERT INTO analiticas
                         (ts, punto, HC, SS, DQO, Sulf)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
                         (
                             row["ts"],
@@ -1209,7 +1209,7 @@ with tab_gestion:
                     ejecutar_sql(
                         """
                         INSERT INTO envio_emisario (dia, envio_emisario)
-                        VALUES (?, ?)
+                        VALUES (%s, %s)
                         """,
                         (
                             row["dia"].strftime("%Y-%m-%d"),
@@ -1262,7 +1262,7 @@ with tab_gestion:
                         """
                         INSERT OR REPLACE INTO analiticas
                         (ts, punto, HC, SS, DQO, Sulf)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
                         (
                             dt_str,
