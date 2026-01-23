@@ -34,6 +34,17 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
+st.sidebar.markdown("### 🧪 Diagnóstico DB")
+st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
+
+try:
+    conn = get_conn()
+    n = conn.execute("SELECT COUNT(*) FROM analiticas").fetchone()[0]
+    conn.close()
+    st.sidebar.write("Registros analíticas:", n)
+except Exception as e:
+    st.sidebar.error(str(e))
+
 # =====================================================
 # RUTA ÚNICA DE BASE DE DATOS SQLITE
 # =====================================================
@@ -102,7 +113,7 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS
+# CARGA DE DATOS DESDE SQLITE (SIEMPRE FRESCO)
 # =====================================================
 
 conn = get_conn()
@@ -110,13 +121,15 @@ conn = get_conn()
 df = pd.read_sql(
     "SELECT * FROM analiticas",
     conn,
-    parse_dates=["ts"]
+    parse_dates=["datetime"]
 )
 
 if not df.empty:
-    df["dia"] = df["ts"].dt.date
+    df["dia"] = df["datetime"].dt.date
 else:
-    df["dia"] = []
+    df = pd.DataFrame(
+        columns=["datetime", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+    )
 
 df_envio = pd.read_sql(
     "SELECT * FROM envio_emisario",
@@ -124,9 +137,8 @@ df_envio = pd.read_sql(
 )
 
 if not df_envio.empty:
-    df_envio["dia"] = pd.to_ts(df_envio["dia"]).dt.date
+    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
 
-# IMPORTANTE: cerrar conexión de lectura
 conn.close()
 
 # -----------------------------------------------------
@@ -1270,18 +1282,20 @@ with tab_gestion:
         
                 if st.button("🔁 Restaurar base de datos"):
                     try:
-                        # Cerrar conexiones si existen
+                        # Cerrar conexiones activas
                         try:
                             conn = get_conn()
                             conn.close()
                         except Exception:
                             pass
         
+                        # Sobrescribir la DB
                         with open(DB_PATH, "wb") as f:
                             f.write(uploaded_db.read())
         
                         st.success("✅ Base de datos restaurada correctamente.")
-                        st.info("🔄 La aplicación se recargará ahora.")
+                        st.info("🔄 Recargando aplicación…")
+        
                         st.rerun()
         
                     except Exception as e:
