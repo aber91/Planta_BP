@@ -10,7 +10,7 @@ pg_conn = psycopg2.connect(
     host="ep-icy-frog-abynjpum-pooler.eu-west-2.aws.neon.tech",
     database="neondb",
     user="neondb_owner",
-    password="TU_PASSWORD",
+    password="npg_dJe8TlKS1xpC",
     port=5432,
 )
 pg_cur = pg_conn.cursor()
