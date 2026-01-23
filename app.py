@@ -126,46 +126,71 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE SQLITE (SIEMPRE FRESCO)
+# CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
 # =====================================================
 
-conn = get_conn()
+def cargar_tabla(query, params=None):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return pd.DataFrame(rows)
+    finally:
+        conn.close()
 
-df = pd.read_sql(
-    "SELECT * FROM analiticas",
-    conn,
-    parse_dates=["ts"]
-)
+
+# ---------- ANALÍTICAS ----------
+df = cargar_tabla("""
+    SELECT
+        id,
+        ts,
+        punto,
+        hc,
+        ss,
+        dqo,
+        sulf
+    FROM analiticas
+    ORDER BY ts
+""")
 
 if not df.empty:
+    df["ts"] = pd.to_datetime(df["ts"])
     df["dia"] = df["ts"].dt.date
 else:
     df = pd.DataFrame(
-        columns=["ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+        columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
     )
 
-df_envio = pd.read_sql(
-    "SELECT * FROM envio_emisario",
-    conn
-)
+
+# ---------- ENVÍO A EMISARIO ----------
+df_envio = cargar_tabla("""
+    SELECT
+        dia,
+        envio_emisario
+    FROM envio_emisario
+""")
 
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+else:
+    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
-conn.close()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
-conn_est = get_conn()
-
-df_est = pd.read_sql(
-    "SELECT * FROM estimados_upa WHERE anio = %s",
-    conn_est,
-    params=(anio,)
+df_est = cargar_tabla(
+    """
+    SELECT
+        anio,
+        parametro,
+        valor
+    FROM estimados_upa
+    WHERE anio = %s
+    """,
+    (anio,)
 )
-
-conn_est.close()
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
