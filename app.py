@@ -34,6 +34,30 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
+# -----------------------------------------------------
+# 🔌 CHECK CONEXIÓN BASE DE DATOS (NEON)
+# -----------------------------------------------------
+def check_db_connection():
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+            cur.fetchone()
+        conn.close()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+ok_db, db_error = check_db_connection()
+
+st.sidebar.markdown("### 🗄️ Estado base de datos")
+
+if ok_db:
+    st.sidebar.success("🟢 Conectado correctamente a Neon")
+else:
+    st.sidebar.error("🔴 Error de conexión a Neon")
+    st.sidebar.code(db_error)
+
 # =====================================================
 # RUTA ÚNICA DE BASE DE DATOS SQLITE
 # =====================================================
