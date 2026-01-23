@@ -1138,21 +1138,27 @@ with tab_gestion:
         dqo = c3.number_input("DQO")
         sulf = c3.number_input("Sulf")
     
-        if st.button("Guardar analítica"):
-            dt = ts.combine(fecha, hora).strftime("%Y-%m-%d %H:%M:%S")
-    
+        if st.button("💾 Guardar analítica"):
+            ts = datetime.combine(fecha, hora)
+        
             ejecutar_sql(
                 """
-                INSERT OR REPLACE INTO analiticas
-                (ts, punto, HC, SS, DQO, Sulf)
+                INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (dt, punto, hc, ss, dqo, sulf)
+                (
+                    ts,
+                    punto,
+                    hc if hc != 0 else None,
+                    ss if ss != 0 else None,
+                    dqo if dqo != 0 else None,
+                    sulf if sulf != 0 else None,
+                )
             )
-    
+        
             st.success("Analítica guardada correctamente")
-    
-    
+            st.rerun()
+        
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
         if not df.empty:
@@ -1202,22 +1208,29 @@ with tab_gestion:
                 use_container_width=True,
             )
     
-            if st.button("Guardar envío a emisario"):
+            if st.button("💾 Guardar envío a emisario"):
                 ejecutar_sql("DELETE FROM envio_emisario")
-    
-                for _, row in tabla_edit.iterrows():
-                    ejecutar_sql(
-                        """
-                        INSERT INTO envio_emisario (dia, envio_emisario)
-                        VALUES (%s, %s)
-                        """,
-                        (
-                            row["dia"].strftime("%Y-%m-%d"),
-                            int(row["envio_emisario"]),
-                        ),
-                    )
-    
-                st.success("Envío a emisario actualizado correctamente")      
+            
+                conn = get_conn()
+                try:
+                    with conn.cursor() as cur:
+                        for _, r in tabla_edit.iterrows():
+                            cur.execute(
+                                """
+                                INSERT INTO envio_emisario (dia, envio_emisario)
+                                VALUES (%s, %s)
+                                """,
+                                (
+                                    r["dia"],
+                                    bool(r["envio_emisario"])
+                                )
+                            )
+                    conn.commit()
+                finally:
+                    conn.close()
+            
+                st.success("Envío a emisario actualizado")
+                st.rerun()
         
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
