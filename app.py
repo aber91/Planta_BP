@@ -157,6 +157,13 @@ df = cargar_tabla("""
 if not df.empty:
     df["ts"] = pd.to_datetime(df["ts"])
     df["dia"] = df["ts"].dt.date
+    # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
+    df = df.rename(columns={
+    "hc": "HC",
+    "ss": "SS",
+    "dqo": "DQO",
+    "sulf": "Sulf",
+})
 else:
     df = pd.DataFrame(
         columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
