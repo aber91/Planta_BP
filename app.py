@@ -1233,75 +1233,49 @@ with tab_gestion:
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
         # -------------------------------------------------
-        with st.expander("⬇️ Exportar datos (CSV)"):
-            conn = get_conn()
-            cur = conn.cursor()
-            
-            cur.execute("SELECT * FROM analiticas ORDER BY id")
-            rows = cur.fetchall()
-            cols = [desc[0] for desc in cur.description]
-            
-            df_export = pd.DataFrame(rows, columns=cols)
-            
-            cur.close()
-            conn.close()
+        # ---------- EXPORTAR BASE DE DATOS ----------
+        with st.expander("💾 Exportar base de datos (.db)"):
         
-            if not df_export.empty:
-                csv = df_export.to_csv(index=False).encode("utf-8")
-        
-                st.download_button(
-                    "⬇️ Descargar analíticas (CSV)",
-                    data=csv,
-                    file_name="analiticas.csv",
-                    mime="text/csv"
-                )
+            if os.path.exists(DB_PATH):
+                with open(DB_PATH, "rb") as f:
+                    st.download_button(
+                        "⬇️ Descargar base de datos actual",
+                        data=f,
+                        file_name="planta.db",
+                        mime="application/octet-stream"
+                    )
             else:
-                st.info("No hay datos para exportar.")
+                st.warning("No existe ninguna base de datos para exportar.")
     
-        # -------------------------------------------------
-        # 📥 IMPORTAR DATOS (CSV)
-        # -------------------------------------------------
-        with st.expander("📥 Importar datos (CSV)"):
-            uploaded_csv = st.file_uploader(
-                "Sube un archivo CSV con analíticas",
-                type=["csv"],
-                key="upload_csv_backup"
+        # ---------- IMPORTAR / RESTAURAR BASE DE DATOS ----------
+        with st.expander("📤 Restaurar base de datos (.db)"):
+        
+            uploaded_db = st.file_uploader(
+                "Selecciona un archivo .db",
+                type=["db"]
             )
-    
-            if uploaded_csv is not None:
-                df_import = pd.read_csv(uploaded_csv)
-    
-                st.write("Vista previa:")
-                st.dataframe(df_import.head())
-    
-                if st.button("📥 Importar datos a la base de datos"):
-                    conn = get_conn()
-                    cur = conn.cursor()
-    
-                    for _, r in df_import.iterrows():
-                        cur.execute(
-                            """
-                            INSERT INTO analiticas (datetime, punto, HC, SS, DQO, Sulf)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (datetime, punto) DO UPDATE
-                            SET HC = EXCLUDED.HC,
-                                SS = EXCLUDED.SS,
-                                DQO = EXCLUDED.DQO,
-                                Sulf = EXCLUDED.Sulf
-                            """,
-                            (
-                                r["datetime"],
-                                r["punto"],
-                                r.get("HC"),
-                                r.get("SS"),
-                                r.get("DQO"),
-                                r.get("Sulf"),
-                            )
-                        )
-    
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-    
-                    st.success("Datos importados correctamente.")
-                    st.rerun()
+        
+            if uploaded_db is not None:
+                st.warning("⚠️ Esta acción sobrescribirá TODOS los datos actuales.")
+        
+                if st.button("🔁 Restaurar base de datos"):
+                    try:
+                        # Cerrar posibles conexiones abiertas
+                        try:
+                            conn = get_conn()
+                            conn.close()
+                        except Exception:
+                            pass
+        
+                        # Escribir el nuevo archivo .db
+                        with open(DB_PATH, "wb") as f:
+                            f.write(uploaded_db.read())
+        
+                        st.success("✅ Base de datos restaurada correctamente.")
+                        st.info("🔄 La aplicación se recargará ahora.")
+        
+                        st.rerun()
+        
+                    except Exception as e:
+                        st.error(f"❌ Error restaurando la base de datos: {e}")
+
