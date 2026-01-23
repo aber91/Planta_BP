@@ -110,14 +110,14 @@ conn = get_conn()
 df = pd.read_sql(
     "SELECT * FROM analiticas",
     conn,
-    parse_dates=["datetime"]
+    parse_dates=["ts"]
 )
 
 if not df.empty:
-    df["dia"] = df["datetime"].dt.date
+    df["dia"] = df["ts"].dt.date
 else:
     df = pd.DataFrame(
-        columns=["datetime", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+        columns=["ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
 
 df_envio = pd.read_sql(
@@ -733,11 +733,11 @@ with tab_dashboard:
     now = datetime.now() 
     
     if periodo_sel == "Últimos 7 días":
-        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=7)]
+        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=7)]
     elif periodo_sel == "Últimos 30 días":
-        df_plot = df_plot[df_plot["datetime"] >= now - timedelta(days=30)]
+        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=30)]
     elif periodo_sel == "Mes actual":
-        df_plot = df_plot[df_plot["datetime"] >= now.replace(day=1)]
+        df_plot = df_plot[df_plot["ts"] >= now.replace(day=1)]
     elif periodo_sel == "Rango personalizado" and f_ini and f_fin:
         df_plot = df_plot[
             (df_plot["ts"] >= pd.to_ts(f_ini)) &
