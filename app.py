@@ -1237,7 +1237,7 @@ with tab_gestion:
             conn = get_conn()
             cur = conn.cursor()
         
-            cur.execute("SELECT * FROM analiticas ORDER BY datetime")
+            cur.execute("SELECT * FROM analiticas ORDER BY "datetime"")
             rows = cur.fetchall()
             cols = [desc[0] for desc in cur.description]
         
