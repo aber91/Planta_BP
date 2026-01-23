@@ -1236,13 +1236,13 @@ with tab_gestion:
         with st.expander("⬇️ Exportar datos (CSV)"):
             conn = get_conn()
             cur = conn.cursor()
-        
+            
             cur.execute('SELECT * FROM analiticas ORDER BY "datetime"')
             rows = cur.fetchall()
             cols = [desc[0] for desc in cur.description]
-        
+            
             df_export = pd.DataFrame(rows, columns=cols)
-        
+            
             cur.close()
             conn.close()
         
