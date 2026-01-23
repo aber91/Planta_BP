@@ -34,17 +34,6 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
-st.sidebar.markdown("### 🧪 Diagnóstico DB")
-st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
-
-try:
-    conn = get_conn()
-    n = conn.execute("SELECT COUNT(*) FROM analiticas").fetchone()[0]
-    conn.close()
-    st.sidebar.write("Registros analíticas:", n)
-except Exception as e:
-    st.sidebar.error(str(e))
-
 # =====================================================
 # RUTA ÚNICA DE BASE DE DATOS SQLITE
 # =====================================================
@@ -1302,3 +1291,13 @@ with tab_gestion:
                         st.error(f"❌ Error restaurando la base de datos: {e}")
 
 
+st.sidebar.markdown("### 🧪 Diagnóstico DB")
+st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
+
+try:
+    conn = get_conn()
+    n = conn.execute("SELECT COUNT(*) FROM analiticas").fetchone()[0]
+    conn.close()
+    st.sidebar.write("Registros analíticas:", n)
+except Exception as e:
+    st.sidebar.error(str(e))
