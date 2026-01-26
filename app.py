@@ -1288,9 +1288,9 @@ with tab_gestion:
     
         st.markdown(
             """
-            ### 🔐 Persistencia de datos (Supabase)
+            ### 🔐 BBDD (Neon PostgresSQL)
     
-            ✔️ Los datos se almacenan en **Neon (PostgreSQL)**  
+            ✔️ Los datos se almacenan en **Neon PostgreSQL**  
             ✔️ **No se pierden al reiniciar la app**  
             ✔️ Copias de seguridad gestionadas por Neon  
             ✔️ Exportación / importación manual mediante .db o .xlsx
