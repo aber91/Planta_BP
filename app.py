@@ -1242,103 +1242,96 @@ with tab_gestion:
         # =====================================================
         # 📥 IMPORTACIÓN DE DATOS DESDE EXCEL (XLSX → NEON)
         # =====================================================
-        with st.expander("📥 Importar analíticas desde Excel (XLSX)"):
-        
-            st.markdown(
-                """
-                Sube los archivos Excel con el formato estándar:
-        
-                - **entrada_planta.xlsx**
-                - **x507.xlsx**
-                - **salidafca.xlsx**
-        
-                Columnas esperadas:
-                **Fecha | Hora | HC | SS | DQO | Sulf**
-        
-                ✔️ Se permiten valores vacíos  
-                ✔️ Los datos se guardan directamente en Neon  
-                ✔️ No se duplican registros (fecha + punto)
-                """
+        with st.expander("📥 Importación de datos XLSX"):
+            st.info(
+                "Formato esperado:\n"
+                "- Col C: Fecha\n"
+                "- Col E: HC\n"
+                "- Col F: SS\n"
+                "- Col G: DQO\n"
+                "- Col H: Sulf\n"
+                "- Fila 1 = encabezados"
             )
         
             archivos = {
-                "Entrada Planta": st.file_uploader(
-                    "📄 entrada_planta.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_entrada"
-                ),
-                "X-507": st.file_uploader(
-                    "📄 x507.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_x507"
-                ),
-                "Salida FCA": st.file_uploader(
-                    "📄 salidafca.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_fca"
-                ),
+                "entrada_planta.xlsx": "Entrada Planta",
+                "x507.xlsx": "X-507",
+                "salidafca.xlsx": "Salida FCA",
             }
         
-            if st.button("🚀 Importar datos XLSX"):
-                total_insertados = 0
-                errores = 0
+            uploaded = st.file_uploader(
+                "Sube uno o varios archivos XLSX",
+                type=["xlsx"],
+                accept_multiple_files=True
+            )
         
-                for punto, archivo in archivos.items():
-                    if archivo is None:
+            if uploaded and st.button("🚀 Importar datos"):
+                total_ok = 0
+                total_err = 0
+        
+                for file in uploaded:
+                    nombre = file.name.lower()
+        
+                    if nombre not in archivos:
+                        st.warning(f"Archivo no reconocido: {file.name}")
                         continue
         
-                    try:
-                        df_xls = pd.read_excel(
-                            archivo,
-                            engine="openpyxl",
-                            usecols="A:F",
-                            names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
-                            header=0,
-                        )
-                    except Exception as e:
-                        st.error(f"❌ Error leyendo {archivo.name}: {e}")
-                        continue
+                    punto = archivos[nombre]
+        
+                    df_xls = pd.read_excel(
+                        file,
+                        engine="openpyxl",
+                        usecols="C:H",
+                        skiprows=1,
+                        names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"]
+                    )
+        
+                    # Limpieza básica
+                    df_xls = df_xls.replace(
+                        ["ND", "nd", "NULL", "null", "-", ""],
+                        pd.NA
+                    )
         
                     for _, r in df_xls.iterrows():
                         try:
-                            if pd.isna(r["Fecha"]) or pd.isna(r["Hora"]):
-                                continue
+                            if pd.isna(r["Fecha"]):
+                                raise ValueError("Fecha vacía")
         
-                            ts = datetime.combine(
-                                pd.to_datetime(r["Fecha"]).date(),
-                                pd.to_datetime(r["Hora"]).time()
-                            )
+                            fecha = pd.to_datetime(r["Fecha"]).date()
+        
+                            if pd.isna(r["Hora"]):
+                                hora = datetime.min.time()
+                            else:
+                                hora = pd.to_datetime(r["Hora"]).time()
+        
+                            ts = datetime.combine(fecha, hora)
         
                             ejecutar_sql(
                                 """
-                                INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
+                                INSERT INTO analiticas
+                                (ts, punto, hc, ss, dqo, sulf)
                                 VALUES (%s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (ts, punto)
-                                DO UPDATE SET
-                                    hc = EXCLUDED.hc,
-                                    ss = EXCLUDED.ss,
-                                    dqo = EXCLUDED.dqo,
-                                    sulf = EXCLUDED.sulf
+                                ON CONFLICT DO NOTHING
                                 """,
                                 (
                                     ts,
                                     punto,
-                                    None if pd.isna(r["HC"]) else float(r["HC"]),
-                                    None if pd.isna(r["SS"]) else float(r["SS"]),
-                                    None if pd.isna(r["DQO"]) else float(r["DQO"]),
-                                    None if pd.isna(r["Sulf"]) else float(r["Sulf"]),
+                                    float(r["HC"]) if not pd.isna(r["HC"]) else None,
+                                    float(r["SS"]) if not pd.isna(r["SS"]) else None,
+                                    float(r["DQO"]) if not pd.isna(r["DQO"]) else None,
+                                    float(r["Sulf"]) if not pd.isna(r["Sulf"]) else None,
                                 )
                             )
         
-                            total_insertados += 1
+                            total_ok += 1
         
                         except Exception:
-                            errores += 1
+                            total_err += 1
         
                 st.success(f"✅ Importación completada")
-                st.info(f"📊 Registros procesados: {total_insertados}")
-                if errores:
-                    st.warning(f"⚠️ Filas con error: {errores}")
+                st.write(f"✔️ Filas importadas: {total_ok}")
+                st.write(f"⚠️ Filas descartadas: {total_err}")
+
                
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
