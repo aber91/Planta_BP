@@ -243,6 +243,11 @@ def get_estimado(param):
         return float(fila.iloc[0]["valor"])
     return None
 
+st.sidebar.markdown("### 🧪 Debug Neon")
+
+st.sidebar.write("Filas analíticas:", len(df))
+st.sidebar.write("Columnas:", list(df.columns))
+
 # =====================================================
 # FUNCIONES DE NEGOCIO
 # =====================================================
