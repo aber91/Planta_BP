@@ -537,7 +537,8 @@ with tab_dashboard:
                             key="upa_est_dqo"
                         )
 
-                        # 💾 Guardar estimados UPA (PostgreSQL / Neon)
+                        # -------------------------------------------------
+                        # 💾 Guardar estimados UPA (Postgres)
                         # -------------------------------------------------
                         if st.button("💾 Guardar estimados UPA"):
                             ejecutar_sql(
@@ -547,7 +548,7 @@ with tab_dashboard:
                                 ON CONFLICT (anio, parametro)
                                 DO UPDATE SET valor = EXCLUDED.valor
                                 """,
-                                (anio, "HC", est_hc_sql)
+                                (anio, "HC", float(est_hc))
                             )
                         
                             ejecutar_sql(
@@ -557,10 +558,10 @@ with tab_dashboard:
                                 ON CONFLICT (anio, parametro)
                                 DO UPDATE SET valor = EXCLUDED.valor
                                 """,
-                                (anio, "DQO", est_dqo_sql)
+                                (anio, "DQO", float(est_dqo))
                             )
                         
-                            st.success("✅ Estimados UPA guardados correctamente en Neon")
+                            st.success("✅ Estimados UPA guardados correctamente")
                             st.rerun()
                                                                 
                         # -------------------------------------------------
