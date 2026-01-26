@@ -423,7 +423,7 @@ tab_dashboard, tab_gestion = st.tabs(
     ["📊 Dashboard", "🛠️ Gestión de datos"]
 )
 
-# =====================================================
+# =====================================================x
 # 📊 DASHBOARD (TODO INTEGRADO AQUÍ)
 # =====================================================
 
@@ -536,39 +536,32 @@ with tab_dashboard:
                             step=1.0,
                             key="upa_est_dqo"
                         )
-                
-                        # -------------------------------------------------
-                        # Guardar estimados UPA (EXPLÍCITO Y SEGURO)
+
+                        # 💾 Guardar estimados UPA (PostgreSQL / Neon)
                         # -------------------------------------------------
                         if st.button("💾 Guardar estimados UPA"):
+                            ejecutar_sql(
+                                """
+                                INSERT INTO estimados_upa (anio, parametro, valor)
+                                VALUES (%s, %s, %s)
+                                ON CONFLICT (anio, parametro)
+                                DO UPDATE SET valor = EXCLUDED.valor
+                                """,
+                                (anio, "HC", est_hc_sql)
+                            )
                         
-                            # Normalizar valores (SQLite no acepta NaN)
-                            est_hc_sql = float(est_hc) if est_hc is not None and not pd.isna(est_hc) else None
-                            est_dqo_sql = float(est_dqo) if est_dqo is not None and not pd.isna(est_dqo) else None
+                            ejecutar_sql(
+                                """
+                                INSERT INTO estimados_upa (anio, parametro, valor)
+                                VALUES (%s, %s, %s)
+                                ON CONFLICT (anio, parametro)
+                                DO UPDATE SET valor = EXCLUDED.valor
+                                """,
+                                (anio, "DQO", est_dqo_sql)
+                            )
                         
-                            if est_hc_sql is not None:
-                                ejecutar_sql(
-                                    """
-                                    INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                                    VALUES (%s, %s, %s)
-                                    """,
-                                    (anio, "HC", est_hc_sql)
-                                )
-                        
-                            if est_dqo_sql is not None:
-                                ejecutar_sql(
-                                    """
-                                    INSERT OR REPLACE INTO estimados_upa (anio, parametro, valor)
-                                    VALUES (%s, %s, %s)
-                                    """,
-                                    (anio, "DQO", est_dqo_sql)
-                                )
-                        
-                            if est_hc_sql is None and est_dqo_sql is None:
-                                st.warning("No hay valores válidos para guardar.")
-                            else:
-                                st.success("Estimados UPA guardados correctamente")
-                                st.rerun()
+                            st.success("✅ Estimados UPA guardados correctamente en Neon")
+                            st.rerun()
                                                                 
                         # -------------------------------------------------
                         # Cálculo UPA
