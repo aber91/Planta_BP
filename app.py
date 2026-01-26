@@ -212,7 +212,13 @@ df_envio = cargar_tabla("""
 """)
 
 if not df_envio.empty:
-    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
+    df_envio["dia"] = pd.to_datetime(
+        df_envio["dia"],
+        errors="coerce"
+    ).dt.date
+
+    # Eliminar filas con fecha inválida
+    df_envio = df_envio.dropna(subset=["dia"])
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
