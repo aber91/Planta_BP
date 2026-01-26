@@ -187,10 +187,10 @@ df = cargar_tabla("""
 """)
 
 if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"])
+    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
+    df = df.dropna(subset=["ts"])   # opcional pero recomendable
     df["dia"] = df["ts"].dt.date
 
-    # Normalizar nombres para la lógica de la app
     df = df.rename(columns={
         "hc": "HC",
         "ss": "SS",
@@ -201,6 +201,7 @@ else:
     df = pd.DataFrame(
         columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
+
 
 # ---------- ENVÍO A EMISARIO ----------
 df_envio = cargar_tabla("""
