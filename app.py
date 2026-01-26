@@ -11,52 +11,78 @@ import psycopg2
 import psycopg2.extras   
 
 # =====================================================
-# CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
+# CONFIGURACIÓN GENERAL Y PERSISTENCIA (NEON / POSTGRES)
 # =====================================================
 
+# -----------------------------------------------------
+# CONEXIÓN A NEON (NO CACHEAR)
+# -----------------------------------------------------
 def get_conn():
+    """
+    Devuelve una conexión nueva a Neon.
+    ❌ NO cachear (las conexiones no son seguras en cache)
+    """
     return psycopg2.connect(
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
         dbname=st.secrets["DB_NAME"],
         user=st.secrets["DB_USER"],
         password=st.secrets["DB_PASSWORD"],
-        sslmode=st.secrets["DB_SSLMODE"],
+        sslmode=st.secrets.get("DB_SSLMODE", "require"),
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
+# -----------------------------------------------------
+# EJECUCIÓN SQL (INSERT / UPDATE / DELETE)
+# -----------------------------------------------------
 def ejecutar_sql(sql, params=None):
+    """
+    Ejecuta escritura en BD.
+    ⚠️ Siempre limpia cache tras escribir.
+    """
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
         conn.commit()
+
+        # 🔥 CLAVE: invalidar cache tras escritura
+        st.cache_data.clear()
+
+    except Exception as e:
+        raise RuntimeError(f"❌ Error SQL:\n{e}")
+
     finally:
         conn.close()
 
 # -----------------------------------------------------
-# 🔌 CHECK CONEXIÓN BASE DE DATOS (NEON)
+# COMPROBACIÓN DE CONEXIÓN (CACHEADA)
 # -----------------------------------------------------
-def check_db_connection():
+@st.cache_data(ttl=300)
+def comprobar_conexion_neon():
+    """
+    Comprueba una vez cada 5 min si Neon responde.
+    """
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("SELECT 1;")
-            cur.fetchone()
         conn.close()
-        return True, None
-    except Exception as e:
-        return False, str(e)
+        return True
+    except Exception:
+        return False
 
-ok_db, db_error = check_db_connection()
 
-st.sidebar.markdown("### 🗄️ Estado base de datos")
+# -----------------------------------------------------
+# INDICADOR VISUAL EN SIDEBAR
+# -----------------------------------------------------
+with st.sidebar:
+    st.markdown("### 🗄️ Base de datos")
+    if comprobar_conexion_neon():
+        st.success("Conectado a Neon")
+    else:
+        st.error("Sin conexión a Neon")
 
-if ok_db:
-    st.sidebar.success("🟢 Conectado correctamente a Neon")
-else:
-    st.sidebar.error("🔴 Error de conexión a Neon")
-    st.sidebar.code(db_error)
 
 # =====================================================
 # RUTA ÚNICA DE BASE DE DATOS SQLITE
