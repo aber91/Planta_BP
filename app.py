@@ -155,16 +155,22 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 # CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
 # =====================================================
 
+# =====================================================
+# CARGA DE DATOS DESDE NEON (CACHEADA)
+# =====================================================
+
+@st.cache_data(ttl=300)
 def cargar_tabla(query, params=None):
+    """
+    Carga datos desde Neon con cache.
+    El cache se invalida automáticamente cuando se llama a ejecutar_sql().
+    """
     conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
-        return pd.DataFrame(rows)
+        df = pd.read_sql(query, conn, params=params)
+        return df
     finally:
         conn.close()
-
 
 # ---------- ANALÍTICAS ----------
 df = cargar_tabla("""
@@ -183,18 +189,18 @@ df = cargar_tabla("""
 if not df.empty:
     df["ts"] = pd.to_datetime(df["ts"])
     df["dia"] = df["ts"].dt.date
-    # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
+
+    # Normalizar nombres para la lógica de la app
     df = df.rename(columns={
-    "hc": "HC",
-    "ss": "SS",
-    "dqo": "DQO",
-    "sulf": "Sulf",
-})
+        "hc": "HC",
+        "ss": "SS",
+        "dqo": "DQO",
+        "sulf": "Sulf",
+    })
 else:
     df = pd.DataFrame(
-        columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
+        columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
-
 
 # ---------- ENVÍO A EMISARIO ----------
 df_envio = cargar_tabla("""
@@ -208,7 +214,6 @@ if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
-
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
@@ -273,7 +278,6 @@ def analitica_valida_salida_fca(df_in):
                 resultados.append(ult)
 
     return pd.DataFrame(resultados)
-
 
 def estado_global(hc, dqo):
     if pd.isna(hc) or pd.isna(dqo):
