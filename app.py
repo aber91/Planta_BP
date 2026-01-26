@@ -1234,65 +1234,54 @@ with tab_gestion:
         
     # ---------- IMPORTACIÓN XLSX ----------
     with st.expander("📥 Importación de datos XLSX"):
-        st.info("Archivos esperados en /data")
-    
-        archivos = {
-            "entrada_planta.xlsx": "Entrada Planta",
-            "x507.xlsx": "X-507",
-            "salidafca.xlsx": "Salida FCA",
-        }
-    
-        if st.button("Importar XLSX"):
-            total_insertados = 0
-    
-            for archivo, punto in archivos.items():
-                ruta = os.path.join("data", archivo)
-    
-                if not os.path.exists(ruta):
-                    st.warning(f"No encontrado: {archivo}")
-                    continue
-    
-                df_xls = pd.read_excel(
-                    ruta,
-                    engine="openpyxl",
-                    usecols="C:H",
-                    names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
-                    header=None,
-                    skiprows=1,
-                )
-    
-                for _, r in df_xls.iterrows():
-                    try:
-                        dt = ts.combine(
-                            pd.to_ts(r["Fecha"]).date(),
-                            pd.to_ts(r["Hora"]).time(),
-                        )
-                        dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        continue
-    
-                    ejecutar_sql(
-                        """
-                        INSERT OR REPLACE INTO analiticas
-                        (ts, punto, HC, SS, DQO, Sulf)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            dt_str,
-                            punto,
-                            r["HC"],
-                            r["SS"],
-                            r["DQO"],
-                            r["Sulf"],
-                        ),
+                
+        def importar_excel(df_xls, punto):
+            registros = []
+        
+            for _, r in df_xls.iterrows():
+                try:
+                    ts = datetime.combine(
+                        pd.to_datetime(r["Fecha"]).date(),
+                        pd.to_datetime(r["Hora"]).time()
                     )
-    
-                    total_insertados += 1
-    
-            st.success(
-                f"Importación completada: {total_insertados} registros procesados"
-            )
-            st.rerun()
+                except Exception:
+                    continue
+        
+                registros.append((
+                    ts,
+                    punto,
+                    float(r["HC"]) if pd.notna(r["HC"]) else None,
+                    float(r["SS"]) if pd.notna(r["SS"]) else None,
+                    float(r["DQO"]) if pd.notna(r["DQO"]) else None,
+                    float(r["Sulf"]) if pd.notna(r["Sulf"]) else None,
+                ))
+        
+            if not registros:
+                return 0
+        
+            conn = get_conn()
+            try:
+                with conn.cursor() as cur:
+                    execute_batch(
+                        cur,
+                        """
+                        INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (ts, punto) DO UPDATE SET
+                            hc = EXCLUDED.hc,
+                            ss = EXCLUDED.ss,
+                            dqo = EXCLUDED.dqo,
+                            sulf = EXCLUDED.sulf
+                        """,
+                        registros,
+                        page_size=500
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        
+            return len(registros)
+
     
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
