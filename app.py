@@ -1290,10 +1290,10 @@ with tab_gestion:
             """
             ### 🔐 Persistencia de datos (Supabase)
     
-            ✔️ Los datos se almacenan en **Supabase (PostgreSQL)**  
+            ✔️ Los datos se almacenan en **Neon (PostgreSQL)**  
             ✔️ **No se pierden al reiniciar la app**  
-            ✔️ Copias de seguridad gestionadas por Supabase  
-            ✔️ Exportación / importación manual mediante CSV
+            ✔️ Copias de seguridad gestionadas por Neon  
+            ✔️ Exportación / importación manual mediante .db o .xlsx
             """
         )
     
