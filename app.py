@@ -1231,58 +1231,7 @@ with tab_gestion:
             
                 st.success("Envío a emisario actualizado")
                 st.rerun()
-        
-    # ---------- IMPORTACIÓN XLSX ----------
-    with st.expander("📥 Importación de datos XLSX"):
-                
-        def importar_excel(df_xls, punto):
-            registros = []
-        
-            for _, r in df_xls.iterrows():
-                try:
-                    ts = datetime.combine(
-                        pd.to_datetime(r["Fecha"]).date(),
-                        pd.to_datetime(r["Hora"]).time()
-                    )
-                except Exception:
-                    continue
-        
-                registros.append((
-                    ts,
-                    punto,
-                    float(r["HC"]) if pd.notna(r["HC"]) else None,
-                    float(r["SS"]) if pd.notna(r["SS"]) else None,
-                    float(r["DQO"]) if pd.notna(r["DQO"]) else None,
-                    float(r["Sulf"]) if pd.notna(r["Sulf"]) else None,
-                ))
-        
-            if not registros:
-                return 0
-        
-            conn = get_conn()
-            try:
-                with conn.cursor() as cur:
-                    execute_batch(
-                        cur,
-                        """
-                        INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (ts, punto) DO UPDATE SET
-                            hc = EXCLUDED.hc,
-                            ss = EXCLUDED.ss,
-                            dqo = EXCLUDED.dqo,
-                            sulf = EXCLUDED.sulf
-                        """,
-                        registros,
-                        page_size=500
-                    )
-                conn.commit()
-            finally:
-                conn.close()
-        
-            return len(registros)
-
-    
+            
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
     
@@ -1298,7 +1247,110 @@ with tab_gestion:
         )
     
         st.divider()
-    
+
+        # =====================================================
+        # 📥 IMPORTACIÓN DE DATOS DESDE EXCEL (XLSX → NEON)
+        # =====================================================
+        with st.expander("📥 Importar analíticas desde Excel (XLSX)"):
+        
+            st.markdown(
+                """
+                Sube los archivos Excel con el formato estándar:
+        
+                - **entrada_planta.xlsx**
+                - **x507.xlsx**
+                - **salidafca.xlsx**
+        
+                Columnas esperadas:
+                **Fecha | Hora | HC | SS | DQO | Sulf**
+        
+                ✔️ Se permiten valores vacíos  
+                ✔️ Los datos se guardan directamente en Neon  
+                ✔️ No se duplican registros (fecha + punto)
+                """
+            )
+        
+            archivos = {
+                "Entrada Planta": st.file_uploader(
+                    "📄 entrada_planta.xlsx",
+                    type=["xlsx"],
+                    key="xlsx_entrada"
+                ),
+                "X-507": st.file_uploader(
+                    "📄 x507.xlsx",
+                    type=["xlsx"],
+                    key="xlsx_x507"
+                ),
+                "Salida FCA": st.file_uploader(
+                    "📄 salidafca.xlsx",
+                    type=["xlsx"],
+                    key="xlsx_fca"
+                ),
+            }
+        
+            if st.button("🚀 Importar datos XLSX"):
+                total_insertados = 0
+                errores = 0
+        
+                for punto, archivo in archivos.items():
+                    if archivo is None:
+                        continue
+        
+                    try:
+                        df_xls = pd.read_excel(
+                            archivo,
+                            engine="openpyxl",
+                            usecols="A:F",
+                            names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+                            header=0,
+                        )
+                    except Exception as e:
+                        st.error(f"❌ Error leyendo {archivo.name}: {e}")
+                        continue
+        
+                    for _, r in df_xls.iterrows():
+                        try:
+                            if pd.isna(r["Fecha"]) or pd.isna(r["Hora"]):
+                                continue
+        
+                            ts = datetime.combine(
+                                pd.to_datetime(r["Fecha"]).date(),
+                                pd.to_datetime(r["Hora"]).time()
+                            )
+        
+                            ejecutar_sql(
+                                """
+                                INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (ts, punto)
+                                DO UPDATE SET
+                                    hc = EXCLUDED.hc,
+                                    ss = EXCLUDED.ss,
+                                    dqo = EXCLUDED.dqo,
+                                    sulf = EXCLUDED.sulf
+                                """,
+                                (
+                                    ts,
+                                    punto,
+                                    None if pd.isna(r["HC"]) else float(r["HC"]),
+                                    None if pd.isna(r["SS"]) else float(r["SS"]),
+                                    None if pd.isna(r["DQO"]) else float(r["DQO"]),
+                                    None if pd.isna(r["Sulf"]) else float(r["Sulf"]),
+                                )
+                            )
+        
+                            total_insertados += 1
+        
+                        except Exception:
+                            errores += 1
+        
+                st.success(f"✅ Importación completada")
+                st.info(f"📊 Registros procesados: {total_insertados}")
+                if errores:
+                    st.warning(f"⚠️ Filas con error: {errores}")
+        
+                st.rerun()
+        
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
         # -------------------------------------------------
