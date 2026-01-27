@@ -31,9 +31,6 @@ def get_conn():
         cur.execute("SET search_path TO public")
     return conn
 
-df_test = cargar_tabla("SELECT COUNT(*) AS n FROM analiticas")
-st.sidebar.write("Test filas analiticas:", df_test)
-
 # -----------------------------------------------------
 # EJECUCIÓN SQL (INSERT / UPDATE / DELETE)
 # -----------------------------------------------------
@@ -249,6 +246,9 @@ st.sidebar.markdown("### 🧪 Debug Neon")
 
 st.sidebar.write("Filas analíticas:", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
+
+df_test = cargar_tabla("SELECT COUNT(*) AS n FROM analiticas")
+st.sidebar.write("Test filas analiticas:", df_test)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
