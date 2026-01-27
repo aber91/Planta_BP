@@ -31,6 +31,9 @@ def get_conn():
         cur.execute("SET search_path TO public")
     return conn
 
+df_test = cargar_tabla("SELECT COUNT(*) AS n FROM analiticas")
+st.sidebar.write("Test filas analiticas:", df_test)
+
 # -----------------------------------------------------
 # EJECUCIÓN SQL (INSERT / UPDATE / DELETE)
 # -----------------------------------------------------
