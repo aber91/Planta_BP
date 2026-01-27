@@ -18,19 +18,18 @@ import psycopg2.extras
 # CONEXIÓN A NEON (NO CACHEAR)
 # -----------------------------------------------------
 def get_conn():
-    """
-    Devuelve una conexión nueva a Neon.
-    ❌ NO cachear (las conexiones no son seguras en cache)
-    """
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
         dbname=st.secrets["DB_NAME"],
         user=st.secrets["DB_USER"],
         password=st.secrets["DB_PASSWORD"],
-        sslmode=st.secrets.get("DB_SSLMODE", "require"),
+        sslmode=st.secrets["DB_SSLMODE"],
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO public")
+    return conn
 
 # -----------------------------------------------------
 # EJECUCIÓN SQL (INSERT / UPDATE / DELETE)
