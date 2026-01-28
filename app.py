@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import calendar
 import psycopg2
 import psycopg2.extras   
+df
 
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (NEON / POSTGRES)
@@ -35,24 +36,16 @@ def get_conn():
 # EJECUCIÓN SQL (INSERT / UPDATE / DELETE)
 # -----------------------------------------------------
 def ejecutar_sql(sql, params=None):
-    """
-    Ejecuta escritura en BD.
-    ⚠️ Siempre limpia cache tras escribir.
-    """
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
         conn.commit()
-
-        # 🔥 CLAVE: invalidar cache tras escritura
-        st.cache_data.clear()
-
-    except Exception as e:
-        raise RuntimeError(f"❌ Error SQL:\n{e}")
-
     finally:
         conn.close()
+
+    # 🔥 INVALIDAR CACHE DE LECTURA
+    cargar_tabla.clear()
 
 # -----------------------------------------------------
 # COMPROBACIÓN DE CONEXIÓN (CACHEADA)
@@ -200,7 +193,6 @@ else:
     df = pd.DataFrame(
         columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
-
 
 # ---------- ENVÍO A EMISARIO ----------
 df_envio = cargar_tabla("""
