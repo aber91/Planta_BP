@@ -1429,3 +1429,13 @@ with tab_gestion:
 
 st.sidebar.markdown("### 🧪 Diagnóstico DB")
 st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
+
+conn = get_conn()
+with conn.cursor() as cur:
+    cur.execute("SELECT current_database(), current_schema(), current_user")
+    info = cur.fetchone()
+conn.close()
+
+st.sidebar.markdown("### 🔎 Contexto Neon (APP)")
+st.sidebar.write(info)
+
