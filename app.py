@@ -246,8 +246,15 @@ st.sidebar.markdown("### 🧪 Debug Neon")
 st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
-df_test = cargar_tabla("SELECT COUNT(*) AS n FROM public.analiticas")
-st.sidebar.write("Filas en DB (COUNT):", int(df_test.iloc[0]["n"]))
+conn = get_conn()
+try:
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM public.analiticas")
+        total = cur.fetchone()[0]
+finally:
+    conn.close()
+
+st.sidebar.write("Filas en DB (COUNT):", total)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
