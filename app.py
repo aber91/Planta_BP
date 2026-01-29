@@ -202,6 +202,7 @@ df_envio = cargar_tabla("""
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(
         df_envio["dia"],
+        format="%Y-%m-%d",
         errors="coerce"
     ).dt.date
     df_envio = df_envio.dropna(subset=["dia"])
@@ -239,12 +240,14 @@ st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
 df_test = cargar_tabla(
-    "SELECT COUNT(*) AS n FROM public.analiticas"
+    "SELECT COUNT(*) FROM public.analiticas"
 )
-st.sidebar.write("Filas en DB (COUNT):", int(df_test.iloc[0]["n"]))
 
-st.cache_data.clear()
-
+# pd.read_sql devuelve columna sin nombre -> índice 0
+st.sidebar.write(
+    "Filas en DB (COUNT):",
+    int(df_test.iloc[0, 0])
+)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
@@ -590,7 +593,8 @@ with tab_dashboard:
                                 """,
                                 (anio, "HC", float(est_hc))
                             )
-                        
+                            st.cache_data.clear()
+
                             ejecutar_sql(
                                 """
                                 INSERT INTO estimados_upa (anio, parametro, valor)
@@ -600,7 +604,7 @@ with tab_dashboard:
                                 """,
                                 (anio, "DQO", float(est_dqo))
                             )
-                        
+                            st.cache_data.clear()
                             st.success("✅ Estimados UPA guardados correctamente")
                                                                 
                         # -------------------------------------------------
@@ -1188,7 +1192,8 @@ with tab_gestion:
                     sulf if sulf != 0 else None,
                 )
             )
-        
+            st.cache_data.clear()
+
             st.success("Analítica guardada correctamente")
         
     # ---------- TABLA EDITABLE ----------
@@ -1221,7 +1226,8 @@ with tab_gestion:
                             row["Sulf"],
                         ),
                     )
-    
+                st.cache_data.clear()
+
                 st.success("Tabla actualizada correctamente")
     
     
@@ -1260,7 +1266,8 @@ with tab_gestion:
                     conn.commit()
                 finally:
                     conn.close()
-            
+                st.cache_data.clear()
+                
                 st.success("Envío a emisario actualizado")
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
