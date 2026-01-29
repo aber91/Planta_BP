@@ -145,45 +145,48 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 # CARGA DE DATOS DESDE NEON (CORRECTA Y EFICIENTE)
 # =====================================================
 
-# -----------------------------------------------------
-# ANALÍTICAS (ÚNICA TABLA CACHEADA)
-# -----------------------------------------------------
+# =====================================================
+# CARGA DE DATOS DESDE NEON (CACHEADA Y ROBUSTA)
+# =====================================================
+
 @st.cache_data(ttl=300)
-def cargar_analiticas():
-    """
-    Carga la tabla analiticas desde Neon.
-    Cacheada 5 minutos o hasta que ejecutar_sql() invalide el cache.
-    """
+def cargar_tabla(query, params=None):
     conn = get_conn()
     try:
-        df = pd.read_sql(
-            """
-            SELECT
-                id,
-                ts,
-                punto,
-                hc,
-                ss,
-                dqo,
-                sulf
-            FROM public.analiticas
-            ORDER BY ts
-            """,
-            conn
-        )
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public")
+        df = pd.read_sql(query, conn, params=params)
         return df
     finally:
         conn.close()
 
+
 # ---------- ANALÍTICAS ----------
-df = cargar_analiticas()
+df = cargar_tabla("""
+    SELECT
+        id,
+        ts,
+        punto,
+        hc,
+        ss,
+        dqo,
+        sulf
+    FROM public.analiticas
+    ORDER BY ts
+""")
 
 if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-    df = df.dropna(subset=["ts"])
+    # 🔒 Parseo SEGURO de fechas (NO borrar filas)
+    df["ts"] = pd.to_datetime(
+        df["ts"],
+        utc=True,
+        errors="coerce"
+    )
+
+    # ⚠️ NO dropna aquí
     df["dia"] = df["ts"].dt.date
 
-    # Normalizar nombres a lógica de la app
+    # Normalizar nombres
     df = df.rename(columns={
         "hc": "HC",
         "ss": "SS",
@@ -195,53 +198,39 @@ else:
         columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
 
-# -----------------------------------------------------
-# ENVÍO A EMISARIO (SIN CACHE)
-# -----------------------------------------------------
-conn = get_conn()
-try:
-    df_envio = pd.read_sql(
-        """
-        SELECT
-            dia,
-            envio_emisario
-        FROM public.envio_emisario
-        """,
-        conn
-    )
-finally:
-    conn.close()
+
+# ---------- ENVÍO A EMISARIO ----------
+df_envio = cargar_tabla("""
+    SELECT
+        dia,
+        envio_emisario
+    FROM public.envio_emisario
+""")
 
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(
         df_envio["dia"],
-        format="%Y-%m-%d",
+        utc=True,
         errors="coerce"
     ).dt.date
-    df_envio = df_envio.dropna(subset=["dia"])
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
-# -----------------------------------------------------
-# ESTIMADOS UPA (SIN CACHE)
-# -----------------------------------------------------
-conn = get_conn()
-try:
-    df_est = pd.read_sql(
-        """
-        SELECT
-            anio,
-            parametro,
-            valor
-        FROM public.estimados_upa
-        WHERE anio = %s
-        """,
-        conn,
-        params=(anio,)
-    )
-finally:
-    conn.close()
 
+# -----------------------------------------------------
+# ESTIMADOS UPA PERSISTENTES
+# -----------------------------------------------------
+df_est = cargar_tabla(
+    """
+    SELECT
+        anio,
+        parametro,
+        valor
+    FROM public.estimados_upa
+    WHERE anio = %s
+    """,
+    (anio,)
+)
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
@@ -249,25 +238,16 @@ def get_estimado(param):
         return float(fila.iloc[0]["valor"])
     return None
 
-
 # =====================================================
-# 🧪 DEBUG NEON (FIABLE, SIN CACHE)
+# 🧪 DEBUG NEON (FINAL)
 # =====================================================
 st.sidebar.markdown("### 🧪 Debug Neon")
 
 st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
-conn = get_conn()
-try:
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) AS n FROM public.analiticas")
-        total = cur.fetchone()["n"]
-
-finally:
-    conn.close()
-
-st.sidebar.write("Filas en DB (COUNT):", total)
+df_test = cargar_tabla("SELECT COUNT(*) AS n FROM public.analiticas")
+st.sidebar.write("Filas en DB (COUNT):", int(df_test.iloc[0]["n"]))
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
