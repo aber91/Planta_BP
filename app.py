@@ -261,8 +261,9 @@ st.sidebar.write("Columnas:", list(df.columns))
 conn = get_conn()
 try:
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM public.analiticas")
-        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) AS n FROM public.analiticas")
+        total = cur.fetchone()["n"]
+
 finally:
     conn.close()
 
