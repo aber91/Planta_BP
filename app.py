@@ -14,6 +14,8 @@ import psycopg2.extras
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (NEON / POSTGRES)
 # =====================================================
 
+now = datetime.now()
+
 # -----------------------------------------------------
 # CONEXIÓN A NEON (NO CACHEAR)
 # -----------------------------------------------------
