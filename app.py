@@ -43,9 +43,6 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
-    # 🔥 INVALIDAR CACHE DE LECTURA
-    cargar_tabla.clear()
-
 # -----------------------------------------------------
 # COMPROBACIÓN DE CONEXIÓN (CACHEADA)
 # -----------------------------------------------------
@@ -62,7 +59,6 @@ def comprobar_conexion_neon():
         return True
     except Exception:
         return False
-
 
 # -----------------------------------------------------
 # INDICADOR VISUAL EN SIDEBAR
