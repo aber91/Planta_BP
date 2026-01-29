@@ -247,7 +247,8 @@ st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
 df_test = cargar_tabla("SELECT COUNT(*) AS n FROM public.analiticas")
-st.sidebar.write("Filas en DB (COUNT):", int(df_test.iloc[0]["n"]))
+total_filas = int(df_test.iloc[0, 0])
+st.sidebar.write("Filas en DB (COUNT):", total_filas)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
