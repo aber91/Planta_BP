@@ -9,7 +9,6 @@ import plotly.graph_objects as go
 import calendar
 import psycopg2
 import psycopg2.extras   
-df
 
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (NEON / POSTGRES)
