@@ -139,25 +139,26 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
-# =====================================================
-
-# =====================================================
-# CARGA DE DATOS DESDE NEON (CACHEADA)
+# CARGA DE DATOS DESDE NEON (CACHEADA Y SEGURA)
 # =====================================================
 
 @st.cache_data(ttl=300)
 def cargar_tabla(query, params=None):
     """
     Carga datos desde Neon con cache.
-    El cache se invalida automáticamente cuando se llama a ejecutar_sql().
+    El cache se invalida manualmente tras escrituras.
     """
     conn = get_conn()
     try:
+        # 🔒 Forzar schema correcto
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public")
+
         df = pd.read_sql(query, conn, params=params)
         return df
     finally:
         conn.close()
+
 
 # ---------- ANALÍTICAS ----------
 df = cargar_tabla("""
@@ -169,13 +170,13 @@ df = cargar_tabla("""
         ss,
         dqo,
         sulf
-    FROM analiticas
+    FROM public.analiticas
     ORDER BY ts
 """)
 
 if not df.empty:
     df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-    df = df.dropna(subset=["ts"])   # opcional pero recomendable
+    df = df.dropna(subset=["ts"])
     df["dia"] = df["ts"].dt.date
 
     df = df.rename(columns={
@@ -189,12 +190,13 @@ else:
         columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
 
+
 # ---------- ENVÍO A EMISARIO ----------
 df_envio = cargar_tabla("""
     SELECT
         dia,
         envio_emisario
-    FROM envio_emisario
+    FROM public.envio_emisario
 """)
 
 if not df_envio.empty:
@@ -202,11 +204,10 @@ if not df_envio.empty:
         df_envio["dia"],
         errors="coerce"
     ).dt.date
-
-    # Eliminar filas con fecha inválida
     df_envio = df_envio.dropna(subset=["dia"])
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
+
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
@@ -217,7 +218,7 @@ df_est = cargar_tabla(
         anio,
         parametro,
         valor
-    FROM estimados_upa
+    FROM public.estimados_upa
     WHERE anio = %s
     """,
     (anio,)
@@ -229,13 +230,21 @@ def get_estimado(param):
         return float(fila.iloc[0]["valor"])
     return None
 
+# =====================================================
+# 🧪 DEBUG NEON (FIABLE)
+# =====================================================
 st.sidebar.markdown("### 🧪 Debug Neon")
 
-st.sidebar.write("Filas analíticas:", len(df))
+st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
-df_test = cargar_tabla("SELECT COUNT(*) AS n FROM analiticas")
-st.sidebar.write("Test filas analiticas:", df_test)
+df_test = cargar_tabla(
+    "SELECT COUNT(*) AS n FROM public.analiticas"
+)
+st.sidebar.write("Filas en DB (COUNT):", int(df_test.iloc[0]["n"]))
+
+st.cache_data.clear()
+
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
