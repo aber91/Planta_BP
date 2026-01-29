@@ -239,24 +239,6 @@ def get_estimado(param):
     return None
 
 # =====================================================
-# 🧪 DEBUG NEON (FINAL)
-# =====================================================
-st.sidebar.markdown("### 🧪 Debug Neon")
-
-st.sidebar.write("Filas analíticas (df):", len(df))
-st.sidebar.write("Columnas:", list(df.columns))
-
-conn = get_conn()
-try:
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM public.analiticas")
-        total = cur.fetchone()[0]
-finally:
-    conn.close()
-
-st.sidebar.write("Filas en DB (COUNT):", total)
-
-# =====================================================
 # FUNCIONES DE NEGOCIO
 # =====================================================
 
