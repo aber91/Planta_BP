@@ -43,6 +43,9 @@ def ejecutar_sql(sql, params=None):
     finally:
         conn.close()
 
+    # 🔥 INVALIDAR CACHE DESPUÉS DE CADA ESCRITURA
+    st.cache_data.clear()
+
 # -----------------------------------------------------
 # COMPROBACIÓN DE CONEXIÓN (CACHEADA)
 # -----------------------------------------------------
@@ -139,46 +142,48 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE NEON (CACHEADA Y SEGURA)
+# CARGA DE DATOS DESDE NEON (CORRECTA Y EFICIENTE)
 # =====================================================
 
+# -----------------------------------------------------
+# ANALÍTICAS (ÚNICA TABLA CACHEADA)
+# -----------------------------------------------------
 @st.cache_data(ttl=300)
-def cargar_tabla(query, params=None):
+def cargar_analiticas():
     """
-    Carga datos desde Neon con cache.
-    El cache se invalida manualmente tras escrituras.
+    Carga la tabla analiticas desde Neon.
+    Cacheada 5 minutos o hasta que ejecutar_sql() invalide el cache.
     """
     conn = get_conn()
     try:
-        # 🔒 Forzar schema correcto
-        with conn.cursor() as cur:
-            cur.execute("SET search_path TO public")
-
-        df = pd.read_sql(query, conn, params=params)
+        df = pd.read_sql(
+            """
+            SELECT
+                id,
+                ts,
+                punto,
+                hc,
+                ss,
+                dqo,
+                sulf
+            FROM public.analiticas
+            ORDER BY ts
+            """,
+            conn
+        )
         return df
     finally:
         conn.close()
 
-
 # ---------- ANALÍTICAS ----------
-df = cargar_tabla("""
-    SELECT
-        id,
-        ts,
-        punto,
-        hc,
-        ss,
-        dqo,
-        sulf
-    FROM public.analiticas
-    ORDER BY ts
-""")
+df = cargar_analiticas()
 
 if not df.empty:
     df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
     df = df.dropna(subset=["ts"])
     df["dia"] = df["ts"].dt.date
 
+    # Normalizar nombres a lógica de la app
     df = df.rename(columns={
         "hc": "HC",
         "ss": "SS",
@@ -190,14 +195,22 @@ else:
         columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
     )
 
-
-# ---------- ENVÍO A EMISARIO ----------
-df_envio = cargar_tabla("""
-    SELECT
-        dia,
-        envio_emisario
-    FROM public.envio_emisario
-""")
+# -----------------------------------------------------
+# ENVÍO A EMISARIO (SIN CACHE)
+# -----------------------------------------------------
+conn = get_conn()
+try:
+    df_envio = pd.read_sql(
+        """
+        SELECT
+            dia,
+            envio_emisario
+        FROM public.envio_emisario
+        """,
+        conn
+    )
+finally:
+    conn.close()
 
 if not df_envio.empty:
     df_envio["dia"] = pd.to_datetime(
@@ -209,21 +222,26 @@ if not df_envio.empty:
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
+# -----------------------------------------------------
+# ESTIMADOS UPA (SIN CACHE)
+# -----------------------------------------------------
+conn = get_conn()
+try:
+    df_est = pd.read_sql(
+        """
+        SELECT
+            anio,
+            parametro,
+            valor
+        FROM public.estimados_upa
+        WHERE anio = %s
+        """,
+        conn,
+        params=(anio,)
+    )
+finally:
+    conn.close()
 
-# -----------------------------------------------------
-# ESTIMADOS UPA PERSISTENTES
-# -----------------------------------------------------
-df_est = cargar_tabla(
-    """
-    SELECT
-        anio,
-        parametro,
-        valor
-    FROM public.estimados_upa
-    WHERE anio = %s
-    """,
-    (anio,)
-)
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
@@ -231,23 +249,24 @@ def get_estimado(param):
         return float(fila.iloc[0]["valor"])
     return None
 
+
 # =====================================================
-# 🧪 DEBUG NEON (FIABLE)
+# 🧪 DEBUG NEON (FIABLE, SIN CACHE)
 # =====================================================
 st.sidebar.markdown("### 🧪 Debug Neon")
 
 st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
-df_test = cargar_tabla(
-    "SELECT COUNT(*) FROM public.analiticas"
-)
+conn = get_conn()
+try:
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM public.analiticas")
+        total = cur.fetchone()[0]
+finally:
+    conn.close()
 
-# pd.read_sql devuelve columna sin nombre -> índice 0
-st.sidebar.write(
-    "Filas en DB (COUNT):",
-    int(df_test.iloc[0, 0])
-)
+st.sidebar.write("Filas en DB (COUNT):", total)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
