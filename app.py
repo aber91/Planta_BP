@@ -779,7 +779,26 @@ with tab_dashboard:
 
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Análisis gráfico")
-
+    @st.cache_data(show_spinner=False)
+    def filtrar_df_por_periodo(df, periodo_sel, f_ini, f_fin):
+        now = datetime.now()
+    
+        if periodo_sel == "Últimos 7 días":
+            return df[df["ts"] >= now - timedelta(days=7)]
+    
+        elif periodo_sel == "Últimos 30 días":
+            return df[df["ts"] >= now - timedelta(days=30)]
+    
+        elif periodo_sel == "Mes actual":
+            return df[df["ts"] >= now.replace(day=1)]
+    
+        elif periodo_sel == "Rango personalizado" and f_ini and f_fin:
+            return df[
+                (df["ts"] >= pd.to_datetime(f_ini)) &
+                (df["ts"] <= pd.to_datetime(f_fin))
+            ]
+    
+        return df
     # -------------------------------------------------
     # Selectores
     # -------------------------------------------------
@@ -814,20 +833,12 @@ with tab_dashboard:
     # -------------------------------------------------
     # Filtrado temporal
     # -------------------------------------------------
-    df_plot = df.copy()
-    now = datetime.now() 
-    
-    if periodo_sel == "Últimos 7 días":
-        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=7)]
-    elif periodo_sel == "Últimos 30 días":
-        df_plot = df_plot[df_plot["ts"] >= now - timedelta(days=30)]
-    elif periodo_sel == "Mes actual":
-        df_plot = df_plot[df_plot["ts"] >= now.replace(day=1)]
-    elif periodo_sel == "Rango personalizado" and f_ini and f_fin:
-        df_plot = df_plot[
-            (df_plot["ts"] >= pd.to_ts(f_ini)) &
-            (df_plot["ts"] <= pd.to_ts(f_fin))
-        ]
+    df_plot = filtrar_df_por_periodo(
+        st.session_state.df,
+        periodo_sel,
+        f_ini,
+        f_fin
+    )
     
     # -------------------------------------------------
     # Checkbox EMA (solo sentido en no comparativo)
