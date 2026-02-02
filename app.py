@@ -241,7 +241,7 @@ def get_estimado(param):
     return None
 
 # =====================================================
-# 🧪 DEBUG NEON (FINAL)
+# 🧪 DEBUG NEON (FIABLE Y SIN ERRORES)
 # =====================================================
 st.sidebar.markdown("### 🧪 Debug Neon")
 
