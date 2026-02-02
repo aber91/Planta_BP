@@ -1345,6 +1345,93 @@ with tab_gestion:
         
                 st.rerun()
 
+        # =====================================================
+        # 📥 IMPORTAR ENVÍO A EMISARIO DESDE EXCEL
+        # =====================================================
+        with st.expander("📥 Importar envío a emisario desde Excel"):
+        
+            st.markdown(
+                """
+                **Formato esperado del archivo XLSX**
+        
+                - Columna A → Fecha  
+                - Columna B → Envío a emisario  
+                  - 1 / 0  
+                  - Sí / No  
+                  - TRUE / FALSE  
+        
+                ✔️ Se sobrescriben los valores del mismo día  
+                ✔️ Inserción directa en Neon  
+                """
+            )
+        
+            archivo_envio = st.file_uploader(
+                "📄 envio_emisario.xlsx",
+                type=["xlsx"],
+                key="xlsx_envio_emisario"
+            )
+        
+            if st.button("🚀 Importar envío a emisario"):
+                if archivo_envio is None:
+                    st.warning("⚠️ Sube primero un archivo XLSX")
+                else:
+                    insertados = 0
+                    errores = 0
+        
+                    try:
+                        df_env = pd.read_excel(
+                            archivo_envio,
+                            engine="openpyxl",
+                            usecols="A,B",
+                            header=0,
+                        )
+        
+                        df_env.columns = ["dia", "envio_emisario"]
+        
+                    except Exception as e:
+                        st.error(f"❌ Error leyendo el archivo: {e}")
+                    else:
+                        for _, r in df_env.iterrows():
+                            try:
+                                if pd.isna(r["dia"]):
+                                    continue
+        
+                                dia = pd.to_datetime(r["dia"]).date()
+        
+                                val = r["envio_emisario"]
+        
+                                # Normalizar valores
+                                if isinstance(val, str):
+                                    val = val.strip().lower()
+                                    envio = 1 if val in ["1", "si", "sí", "true", "yes"] else 0
+                                else:
+                                    envio = 1 if int(val) == 1 else 0
+        
+                                ejecutar_sql(
+                                    """
+                                    INSERT INTO envio_emisario (dia, envio_emisario)
+                                    VALUES (%s, %s)
+                                    ON CONFLICT (dia)
+                                    DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
+                                    """,
+                                    (dia, envio)
+                                )
+        
+                                insertados += 1
+        
+                            except Exception:
+                                errores += 1
+        
+                        if insertados > 0:
+                            st.success(f"✅ Envío a emisario importado: {insertados} días")
+                        else:
+                            st.warning("⚠️ No se insertaron filas")
+        
+                        if errores > 0:
+                            st.warning(f"⚠️ Filas con error: {errores}")
+        
+                        st.rerun()
+        
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
         # -------------------------------------------------
