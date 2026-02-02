@@ -126,16 +126,19 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE NEON (FIABLE, SIN CACHE)
+# CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
 # =====================================================
 
 def cargar_tabla(query, params=None):
     conn = get_conn()
     try:
-        df = pd.read_sql(query, conn, params=params)
-        return df
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return pd.DataFrame(rows)
     finally:
         conn.close()
+
 
 # ---------- ANALÍTICAS ----------
 df = cargar_tabla("""
@@ -147,24 +150,23 @@ df = cargar_tabla("""
         ss,
         dqo,
         sulf
-    FROM public.analiticas
+    FROM analiticas
     ORDER BY ts
 """)
 
 if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
-    df = df.dropna(subset=["ts"])
+    df["ts"] = pd.to_datetime(df["ts"])
     df["dia"] = df["ts"].dt.date
-
+    # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
     df = df.rename(columns={
-        "hc": "HC",
-        "ss": "SS",
-        "dqo": "DQO",
-        "sulf": "Sulf",
-    })
+    "hc": "HC",
+    "ss": "SS",
+    "dqo": "DQO",
+    "sulf": "Sulf",
+})
 else:
     df = pd.DataFrame(
-        columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+        columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
     )
 
 
@@ -173,27 +175,25 @@ df_envio = cargar_tabla("""
     SELECT
         dia,
         envio_emisario
-    FROM public.envio_emisario
+    FROM envio_emisario
 """)
 
 if not df_envio.empty:
-    df_envio["dia"] = pd.to_datetime(
-        df_envio["dia"],
-        errors="coerce"
-    ).dt.date
-    df_envio = df_envio.dropna(subset=["dia"])
+    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
 else:
     df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
 
 
-# ---------- ESTIMADOS UPA ----------
+# -----------------------------------------------------
+# ESTIMADOS UPA PERSISTENTES
+# -----------------------------------------------------
 df_est = cargar_tabla(
     """
     SELECT
         anio,
         parametro,
         valor
-    FROM public.estimados_upa
+    FROM estimados_upa
     WHERE anio = %s
     """,
     (anio,)
@@ -562,6 +562,7 @@ with tab_dashboard:
                             )
                         
                             st.success("✅ Estimados UPA guardados correctamente")
+                            st.rerun()
                                                                 
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1150,6 +1151,7 @@ with tab_gestion:
             )
         
             st.success("Analítica guardada correctamente")
+            st.rerun()
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
@@ -1222,6 +1224,7 @@ with tab_gestion:
                     conn.close()
             
                 st.success("Envío a emisario actualizado")
+                st.rerun()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
@@ -1481,3 +1484,4 @@ with tab_gestion:
 
 st.sidebar.markdown("### 🧪 Diagnóstico DB")
 st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
+
