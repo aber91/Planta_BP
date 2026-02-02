@@ -129,14 +129,16 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 # CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
 # =====================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
 def cargar_tabla(query, params=None):
     conn = get_conn()
     try:
-        df = pd.read_sql(query, conn, params=params)
-        return df
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return pd.DataFrame(rows)
     finally:
         conn.close()
+
 
 # ---------- ANALÍTICAS ----------
 df = cargar_tabla("""
@@ -153,7 +155,7 @@ df = cargar_tabla("""
 """)
 
 if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
+    df["ts"] = pd.to_datetime(df["ts"])
     df["dia"] = df["ts"].dt.date
     # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
     df = df.rename(columns={
@@ -558,9 +560,9 @@ with tab_dashboard:
                                 """,
                                 (anio, "DQO", float(est_dqo))
                             )
-                            
-                            st.cache_data.clear()
+                        
                             st.success("✅ Estimados UPA guardados correctamente")
+                            st.rerun()
                                                                 
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1147,9 +1149,9 @@ with tab_gestion:
                     sulf if sulf != 0 else None,
                 )
             )
-            
-            st.cache_data.clear()
+        
             st.success("Analítica guardada correctamente")
+            st.rerun()
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
@@ -1163,8 +1165,7 @@ with tab_gestion:
             if st.button("Guardar cambios en tabla"):
                 # Vaciar tabla
                 ejecutar_sql("DELETE FROM analiticas")
-                st.cache_data.clear()
-
+    
                 # Reinsertar fila a fila (persistencia garantizada)
                 for _, row in df_edit.iterrows():
                     ejecutar_sql(
@@ -1182,8 +1183,7 @@ with tab_gestion:
                             row["Sulf"],
                         ),
                     )
-                
-                st.cache_data.clear()
+    
                 st.success("Tabla actualizada correctamente")
     
     
@@ -1222,8 +1222,9 @@ with tab_gestion:
                     conn.commit()
                 finally:
                     conn.close()
-                st.cache_data.clear()
+            
                 st.success("Envío a emisario actualizado")
+                st.rerun()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
