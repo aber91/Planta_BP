@@ -249,14 +249,16 @@ st.sidebar.write("Filas analíticas (df):", len(df))
 st.sidebar.write("Columnas:", list(df.columns))
 
 df_test = cargar_tabla(
-    "SELECT COUNT(*) FROM public.analiticas"
+    "SELECT COUNT(*) AS total FROM public.analiticas"
 )
 
-# Conversión ultra-robusta
-valor_raw = df_test.iloc[0, 0]
-total_filas = pd.to_numeric(valor_raw, errors="coerce")
+total_filas = (
+    int(df_test["total"].iloc[0])
+    if not df_test.empty and pd.notna(df_test["total"].iloc[0])
+    else 0
+)
 
-st.sidebar.write("Filas en DB (COUNT):", int(total_filas) if pd.notna(total_filas) else "Error")
+st.sidebar.write("Filas en DB (COUNT):", total_filas)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
