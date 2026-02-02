@@ -126,84 +126,113 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
+# CARGA DE DATOS DESDE NEON (OPTIMIZADA Y ESTABLE)
 # =====================================================
 
-def cargar_tabla(query, params=None):
+# ---------- ANALÍTICAS (CACHEADAS) ----------
+@st.cache_data(ttl=300)
+def cargar_analiticas():
     conn = get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
-        return pd.DataFrame(rows)
+        df = pd.read_sql(
+            """
+            SELECT
+                id,
+                ts,
+                punto,
+                hc,
+                ss,
+                dqo,
+                sulf
+            FROM analiticas
+            ORDER BY ts
+            """,
+            conn
+        )
     finally:
         conn.close()
 
+    if df.empty:
+        return pd.DataFrame(
+            columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+        )
 
-# ---------- ANALÍTICAS ----------
-df = cargar_tabla("""
-    SELECT
-        id,
-        ts,
-        punto,
-        hc,
-        ss,
-        dqo,
-        sulf
-    FROM analiticas
-    ORDER BY ts
-""")
-
-if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"])
+    # 🔒 Todo el procesamiento dentro del caché
+    df["ts"] = pd.to_datetime(df["ts"], errors="coerce")
+    df = df.dropna(subset=["ts"])
     df["dia"] = df["ts"].dt.date
-    # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
+
+    # Normalizar nombres de columnas para la lógica de la app
     df = df.rename(columns={
-    "hc": "HC",
-    "ss": "SS",
-    "dqo": "DQO",
-    "sulf": "Sulf",
-})
-else:
-    df = pd.DataFrame(
-        columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
-    )
+        "hc": "HC",
+        "ss": "SS",
+        "dqo": "DQO",
+        "sulf": "Sulf",
+    })
 
+    return df
 
-# ---------- ENVÍO A EMISARIO ----------
-df_envio = cargar_tabla("""
-    SELECT
-        dia,
-        envio_emisario
-    FROM envio_emisario
-""")
+# ---------- ENVÍO A EMISARIO (CACHEADO) ----------
+@st.cache_data(ttl=300)
+def cargar_envio_emisario():
+    conn = get_conn()
+    try:
+        df = pd.read_sql(
+            """
+            SELECT
+                dia,
+                envio_emisario
+            FROM envio_emisario
+            """,
+            conn
+        )
+    finally:
+        conn.close()
 
-if not df_envio.empty:
-    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
-else:
-    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
+    if df.empty:
+        return pd.DataFrame(columns=["dia", "envio_emisario"])
 
+    df["dia"] = pd.to_datetime(
+        df["dia"],
+        format="%Y-%m-%d",
+        errors="coerce"
+    ).dt.date
 
-# -----------------------------------------------------
-# ESTIMADOS UPA PERSISTENTES
-# -----------------------------------------------------
-df_est = cargar_tabla(
-    """
-    SELECT
-        anio,
-        parametro,
-        valor
-    FROM estimados_upa
-    WHERE anio = %s
-    """,
-    (anio,)
-)
+    return df.dropna(subset=["dia"])
+
+# ---------- ESTIMADOS UPA (NO CACHEADOS) ----------
+def cargar_estimados_upa(anio):
+    conn = get_conn()
+    try:
+        df = pd.read_sql(
+            """
+            SELECT
+                anio,
+                parametro,
+                valor
+            FROM estimados_upa
+            WHERE anio = %s
+            """,
+            conn,
+            params=(anio,)
+        )
+    finally:
+        conn.close()
+
+    return df
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
     if not fila.empty:
         return float(fila.iloc[0]["valor"])
     return None
+
+# =====================================================
+# CARGA EFECTIVA EN LA APP
+# =====================================================
+df = cargar_analiticas()
+df_envio = cargar_envio_emisario()
+df_est = cargar_estimados_upa(anio)
 
 # =====================================================
 # FUNCIONES DE NEGOCIO
