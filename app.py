@@ -252,9 +252,9 @@ df_test = cargar_tabla(
     "SELECT COUNT(*) AS total FROM public.analiticas"
 )
 
-total_filas = (
-    int(df_test["total"].iloc[0])
-    if not df_test.empty and pd.notna(df_test["total"].iloc[0])
+total_filas = int(
+    pd.to_numeric(df_test["total"].iloc[0], errors="coerce")
+    if not df_test.empty
     else 0
 )
 
