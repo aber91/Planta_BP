@@ -561,7 +561,6 @@ with tab_dashboard:
                             
                             st.cache_data.clear()
                             st.success("✅ Estimados UPA guardados correctamente")
-                            st.rerun()
                                                                 
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1151,7 +1150,6 @@ with tab_gestion:
             
             st.cache_data.clear()
             st.success("Analítica guardada correctamente")
-            st.rerun()
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
@@ -1226,7 +1224,6 @@ with tab_gestion:
                     conn.close()
                 st.cache_data.clear()
                 st.success("Envío a emisario actualizado")
-                st.rerun()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
