@@ -1245,40 +1245,35 @@ with tab_gestion:
         # =====================================================
         # 📥 IMPORTACIÓN DE DATOS DESDE EXCEL (XLSX → NEON)
         # =====================================================
-        with st.expander("📥 Importar analíticas desde Excel (XLSX)"):
+
+        with st.expander("📥 Importar analíticas desde Excel"):
         
             st.markdown(
                 """
-                Sube los archivos Excel con el formato estándar:
+                **Formato esperado de los archivos XLSX**
         
-                - **entrada_planta.xlsx**
-                - **x507.xlsx**
-                - **salidafca.xlsx**
-        
-                Columnas esperadas:
-                **Fecha | Hora | HC | SS | DQO | Sulf**
+                - Fila 1: encabezados  
+                - Columna C → Fecha  
+                - Columna E → HC  
+                - Columna F → SS  
+                - Columna G → DQO  
+                - Columna H → Sulf  
         
                 ✔️ Se permiten valores vacíos  
-                ✔️ Los datos se guardan directamente en Neon  
-                ✔️ No se duplican registros (fecha + punto)
+                ✔️ Hora asumida automáticamente (12:00)  
+                ✔️ Inserción directa en Neon  
                 """
             )
         
             archivos = {
                 "Entrada Planta": st.file_uploader(
-                    "📄 entrada_planta.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_entrada"
+                    "📄 entrada_planta.xlsx", type=["xlsx"], key="xlsx_entrada"
                 ),
                 "X-507": st.file_uploader(
-                    "📄 x507.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_x507"
+                    "📄 x507.xlsx", type=["xlsx"], key="xlsx_x507"
                 ),
                 "Salida FCA": st.file_uploader(
-                    "📄 salidafca.xlsx",
-                    type=["xlsx"],
-                    key="xlsx_fca"
+                    "📄 salidafca.xlsx", type=["xlsx"], key="xlsx_fca"
                 ),
             }
         
@@ -1294,22 +1289,24 @@ with tab_gestion:
                         df_xls = pd.read_excel(
                             archivo,
                             engine="openpyxl",
-                            usecols="A:F",
-                            names=["Fecha", "Hora", "HC", "SS", "DQO", "Sulf"],
+                            usecols="C,E,F,G,H",
                             header=0,
                         )
+        
+                        df_xls.columns = ["Fecha", "HC", "SS", "DQO", "Sulf"]
+        
                     except Exception as e:
                         st.error(f"❌ Error leyendo {archivo.name}: {e}")
                         continue
         
                     for _, r in df_xls.iterrows():
                         try:
-                            if pd.isna(r["Fecha"]) or pd.isna(r["Hora"]):
+                            if pd.isna(r["Fecha"]):
                                 continue
         
                             ts = datetime.combine(
                                 pd.to_datetime(r["Fecha"]).date(),
-                                pd.to_datetime(r["Hora"]).time()
+                                datetime.strptime("12:00", "%H:%M").time()
                             )
         
                             ejecutar_sql(
@@ -1338,13 +1335,16 @@ with tab_gestion:
                         except Exception:
                             errores += 1
         
-                st.success(f"✅ Importación completada")
-                st.info(f"📊 Registros procesados: {total_insertados}")
-                if errores:
+                if total_insertados > 0:
+                    st.success(f"✅ Importación completada: {total_insertados} filas insertadas")
+                else:
+                    st.warning("⚠️ No se insertaron filas")
+        
+                if errores > 0:
                     st.warning(f"⚠️ Filas con error: {errores}")
         
                 st.rerun()
-        
+
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
         # -------------------------------------------------
