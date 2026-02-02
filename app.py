@@ -20,6 +20,9 @@ if "df" not in st.session_state:
 if "df_envio" not in st.session_state:
     st.session_state.df_envio = None
 
+if "df_est" not in st.session_state:
+    st.session_state.df_est = None
+
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
@@ -215,17 +218,20 @@ df_envio = st.session_state.df_envio.copy()
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
-df_est = cargar_tabla(
-    """
-    SELECT
-        anio,
-        parametro,
-        valor
-    FROM estimados_upa
-    WHERE anio = %s
-    """,
-    (anio,)
-)
+if st.session_state.df_est is None:
+    st.session_state.df_est = cargar_tabla(
+        """
+        SELECT
+            anio,
+            parametro,
+            valor
+        FROM estimados_upa
+        WHERE anio = %s
+        """,
+        (anio,)
+    )
+
+df_est = st.session_state.df_est
 
 def get_estimado(param):
     fila = df_est[df_est["parametro"] == param]
@@ -591,7 +597,8 @@ with tab_dashboard:
                         
                             st.success("✅ Estimados UPA guardados correctamente")
                             ()
-                                                                
+                            st.session_state.df_est = None
+                                    
                         # -------------------------------------------------
                         # Cálculo UPA
                         # -------------------------------------------------
