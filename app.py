@@ -259,7 +259,8 @@ def asegurar_ts(df):
 
     # Último recurso: no se puede ordenar
     return df
-
+    
+@st.cache_data(show_spinner=False)
 def analitica_valida_salida_fca(df_in):
     resultados = []
 
@@ -344,6 +345,7 @@ def texto_margen(margen):
         return f":orange[Margen previsto: +{margen:.1f} ppm]"
     return f":green[Margen previsto: +{margen:.1f} ppm]"
 
+@st.cache_data(show_spinner=False)
 def calcular_eficiencias_diarias(df, parametro):
     """
     Calcula eficiencias diarias por etapa:
@@ -385,6 +387,7 @@ def calcular_eficiencias_diarias(df, parametro):
 
     return pd.DataFrame(resultados)
 
+@st.cache_data(show_spinner=False)
 def diagnostico_filtros_fca(df_plot, parametro):
     """
     Diagnóstico automático de filtros FCA
