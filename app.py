@@ -11,6 +11,16 @@ import psycopg2
 import psycopg2.extras   
 
 # =====================================================
+# SESSION STATE – CONTROL DE CARGAS
+# =====================================================
+
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "df_envio" not in st.session_state:
+    st.session_state.df_envio = None
+
+# =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
 
@@ -126,7 +136,7 @@ CREATE TABLE IF NOT EXISTS estimados_upa (
 """)
 
 # =====================================================
-# CARGA DE DATOS DESDE NEON (SIEMPRE FRESCO)
+# CARGA DE DATOS DESDE NEON (CONTROLADA POR SESIÓN)
 # =====================================================
 
 def cargar_tabla(query, params=None):
@@ -141,48 +151,66 @@ def cargar_tabla(query, params=None):
 
 
 # ---------- ANALÍTICAS ----------
-df = cargar_tabla("""
-    SELECT
-        id,
-        ts,
-        punto,
-        hc,
-        ss,
-        dqo,
-        sulf
-    FROM analiticas
-    ORDER BY ts
-""")
+if st.session_state.df is None:
 
-if not df.empty:
-    df["ts"] = pd.to_datetime(df["ts"])
-    df["dia"] = df["ts"].dt.date
-    # 🔁 Normalizar nombres de columnas (Postgres → lógica app)
-    df = df.rename(columns={
-    "hc": "HC",
-    "ss": "SS",
-    "dqo": "DQO",
-    "sulf": "Sulf",
-})
-else:
-    df = pd.DataFrame(
-        columns=["id", "ts", "punto", "hc", "ss", "dqo", "sulf", "dia"]
-    )
+    df_tmp = cargar_tabla("""
+        SELECT
+            id,
+            ts,
+            punto,
+            hc,
+            ss,
+            dqo,
+            sulf
+        FROM analiticas
+        ORDER BY ts
+    """)
 
+    if not df_tmp.empty:
+        df_tmp["ts"] = pd.to_datetime(df_tmp["ts"], errors="coerce")
+        df_tmp = df_tmp.dropna(subset=["ts"])
+        df_tmp["dia"] = df_tmp["ts"].dt.date
+
+        df_tmp = df_tmp.rename(columns={
+            "hc": "HC",
+            "ss": "SS",
+            "dqo": "DQO",
+            "sulf": "Sulf",
+        })
+    else:
+        df_tmp = pd.DataFrame(
+            columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
+        )
+
+    st.session_state.df = df_tmp
+
+
+df = st.session_state.df.copy()
 
 # ---------- ENVÍO A EMISARIO ----------
-df_envio = cargar_tabla("""
-    SELECT
-        dia,
-        envio_emisario
-    FROM envio_emisario
-""")
+if st.session_state.df_envio is None:
 
-if not df_envio.empty:
-    df_envio["dia"] = pd.to_datetime(df_envio["dia"]).dt.date
-else:
-    df_envio = pd.DataFrame(columns=["dia", "envio_emisario"])
+    df_envio_tmp = cargar_tabla("""
+        SELECT
+            dia,
+            envio_emisario
+        FROM envio_emisario
+    """)
 
+    if not df_envio_tmp.empty:
+        df_envio_tmp["dia"] = pd.to_datetime(
+            df_envio_tmp["dia"],
+            errors="coerce"
+        ).dt.date
+        df_envio_tmp = df_envio_tmp.dropna(subset=["dia"])
+    else:
+        df_envio_tmp = pd.DataFrame(
+            columns=["dia", "envio_emisario"]
+        )
+
+    st.session_state.df_envio = df_envio_tmp
+
+df_envio = st.session_state.df_envio.copy()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
@@ -562,7 +590,7 @@ with tab_dashboard:
                             )
                         
                             st.success("✅ Estimados UPA guardados correctamente")
-                            st.rerun()
+                            ()
                                                                 
                         # -------------------------------------------------
                         # Cálculo UPA
@@ -1151,7 +1179,7 @@ with tab_gestion:
             )
         
             st.success("Analítica guardada correctamente")
-            st.rerun()
+            ()
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
@@ -1224,7 +1252,7 @@ with tab_gestion:
                     conn.close()
             
                 st.success("Envío a emisario actualizado")
-                st.rerun()
+                ()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
     with st.expander("💾 Copia de seguridad y persistencia de datos"):
@@ -1343,7 +1371,7 @@ with tab_gestion:
                 if errores > 0:
                     st.warning(f"⚠️ Filas con error: {errores}")
         
-                st.rerun()
+                ()
 
         # =====================================================
         # 📥 IMPORTAR ENVÍO A EMISARIO DESDE EXCEL
@@ -1430,7 +1458,7 @@ with tab_gestion:
                         if errores > 0:
                             st.warning(f"⚠️ Filas con error: {errores}")
         
-                        st.rerun()
+                        ()
         
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
@@ -1476,7 +1504,7 @@ with tab_gestion:
                         st.success("✅ Base de datos restaurada correctamente.")
                         st.info("🔄 Recargando aplicación…")
         
-                        st.rerun()
+                        ()
         
                     except Exception as e:
                         st.error(f"❌ Error restaurando la base de datos: {e}")
