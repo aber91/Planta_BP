@@ -544,7 +544,7 @@ with tab_dashboard:
                         st.info("No hay suficientes datos para calcular la UPA.")
                     else:
                         # -------------------------------------------------
-                        # Cargar estimados persistentes (desde BBDD)
+                        # Cargar estimados persistentes (BBDD)
                         # -------------------------------------------------
                         est_hc_guardado = get_estimado("HC")
                         est_dqo_guardado = get_estimado("DQO")
@@ -573,7 +573,7 @@ with tab_dashboard:
                             step=1.0,
                             key="upa_est_dqo"
                         )
-
+                
                         # -------------------------------------------------
                         # 💾 Guardar estimados UPA (Postgres)
                         # -------------------------------------------------
@@ -587,7 +587,7 @@ with tab_dashboard:
                                 """,
                                 (anio, "HC", float(est_hc))
                             )
-                        
+                
                             ejecutar_sql(
                                 """
                                 INSERT INTO estimados_upa (anio, parametro, valor)
@@ -597,25 +597,26 @@ with tab_dashboard:
                                 """,
                                 (anio, "DQO", float(est_dqo))
                             )
-                        
+                
                             st.success("✅ Estimados UPA guardados correctamente")
-                            ()
-                            st.session_state.df_est = None
-                                    
+                
                         # -------------------------------------------------
-                        # Cálculo UPA
+                        # 🔢 CÁLCULO ÚNICO DE UPA (FUENTE DE VERDAD)
                         # -------------------------------------------------
+                        est_hc_eff = float(est_hc)
+                        est_dqo_eff = float(est_dqo)
+                
                         upa_hc = calcular_upa(
                             hc_anual,
                             dias_transcurridos,
-                            est_hc,
+                            est_hc_eff,
                             dias_restantes
                         )
                 
                         upa_dqo = calcular_upa(
                             dqo_anual,
                             dias_transcurridos,
-                            est_dqo,
+                            est_dqo_eff,
                             dias_restantes
                         )
                 
@@ -657,6 +658,7 @@ with tab_dashboard:
                         if margen_dqo is not None:
                             st.markdown(texto_margen(margen_dqo))
 
+
             # =================================================
             # 🟩 COLUMNA DERECHA – GRÁFICO ANUAL
             # =================================================
@@ -681,7 +683,7 @@ with tab_dashboard:
 
                 prom_acum = prom_mensual.expanding().mean()
 
-                # --------- PROYECCIÓN UPA PROGRESIVA (CORREGIDA) ---------
+                # --------- PROYECCIÓN UPA PROGRESIVA (ALINEADA CON UPA NUMÉRICA) ---------
                 proy = prom_acum.copy()
                 
                 meses_reales = prom_mensual.dropna()
@@ -689,30 +691,30 @@ with tab_dashboard:
                 if not meses_reales.empty:
                     ultimo_mes = meses_reales.index.max()
                 
-                    # Valor estimado mensual
-                    est = est_hc if parametro == "HC" else est_dqo
+                    # 🔑 MISMO estimado efectivo que el bloque UPA
+                    est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
                 
                     # Suma y número de meses reales
                     suma_real = meses_reales.sum()
                     n_real = len(meses_reales)
                 
                     for m in range(ultimo_mes + 1, 13):
-                        suma_real += est
+                        suma_real += est_eff
                         n_real += 1
                         proy.loc[m] = suma_real / n_real
-                        
+                
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
-
+                
                 fig = go.Figure()
-
+                
                 fig.add_bar(
                     x=nombres_meses,
                     y=prom_mensual,
                     name="Promedio mensual",
                     marker_color="#4C78A8"
                 )
-
+                
                 fig.add_trace(go.Scatter(
                     x=nombres_meses,
                     y=prom_acum,
@@ -720,7 +722,7 @@ with tab_dashboard:
                     name="Promedio acumulado",
                     line=dict(width=3)
                 ))
-
+                
                 fig.add_trace(go.Scatter(
                     x=nombres_meses,
                     y=proy,
@@ -728,7 +730,7 @@ with tab_dashboard:
                     name="Proyección UPA",
                     line=dict(width=3, dash="dash")
                 ))
-
+                
                 fig.add_hline(
                     y=limite,
                     line_dash="dot",
@@ -736,14 +738,14 @@ with tab_dashboard:
                     annotation_text="Límite anual",
                     annotation_position="top left"
                 )
-
+                
                 fig.update_layout(
                     height=520,
                     margin=dict(l=20, r=20, t=40, b=20),
                     yaxis_title="ppm",
                     legend=dict(orientation="h", y=-0.25)
                 )
-
+                
                 st.plotly_chart(fig, use_container_width=True)
 
     # ---------- ESTADO PLANTA ----------
