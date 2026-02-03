@@ -577,6 +577,8 @@ with tab_dashboard:
                     dias_restantes = max(dias_totales - dias_transcurridos, 0)
                     upa_hc = None
                     upa_dqo = None
+                    est_hc_eff = None
+                    est_dqo_eff = None
                 
                     if dias_transcurridos == 0:
                         st.info("No hay suficientes datos para calcular la UPA.")
@@ -731,17 +733,38 @@ with tab_dashboard:
 
                 prom_acum = sumas.cumsum() / conteos.cumsum()
 
-                # --------- PROYECCIÓN UPA (ALINEADA CON UPA NUMÉRICA) ---------
+                # --------- PROYECCIÓN UPA (CON TENDENCIA MENSUAL) ---------
                 proy = prom_acum.copy()
 
-                upa_val = upa_hc if parametro == "HC" else upa_dqo
+                est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
                 meses_reales = conteos.dropna()
 
-                if not meses_reales.empty:
+                if not meses_reales.empty and est_eff is not None:
                     ultimo_mes = meses_reales.index.max()
-                    if upa_val is not None:
-                        for m in range(ultimo_mes + 1, 13):
-                            proy.loc[m] = upa_val
+                    hoy = date.today()
+                    anio_actual = hoy.year
+                    mes_actual = hoy.month
+
+                    suma_acum = 0.0
+                    conteo_acum = 0
+                    for m in range(1, 13):
+                        suma_real = sumas.loc[m] if pd.notna(sumas.loc[m]) else 0.0
+                        conteo_real = int(conteos.loc[m]) if pd.notna(conteos.loc[m]) else 0
+                        dias_mes = calendar.monthrange(anio_actual, m)[1]
+
+                        if m < mes_actual:
+                            suma_acum += suma_real
+                            conteo_acum += conteo_real
+                        elif m == mes_actual:
+                            dias_restantes_mes = max(dias_mes - conteo_real, 0)
+                            suma_acum += suma_real + (dias_restantes_mes * est_eff)
+                            conteo_acum += conteo_real + dias_restantes_mes
+                        else:
+                            suma_acum += dias_mes * est_eff
+                            conteo_acum += dias_mes
+
+                        if m >= ultimo_mes and conteo_acum > 0:
+                            proy.loc[m] = suma_acum / conteo_acum
                 
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
