@@ -174,6 +174,7 @@ def cargar_tabla(query, params=None):
 # ---------- ANALÍTICAS ----------
 if st.session_state.df is None:
 
+def cargar_analiticas():
     df_tmp = cargar_tabla("""
         SELECT
             id,
@@ -203,14 +204,9 @@ if st.session_state.df is None:
             columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
         )
 
-    st.session_state.df = df_tmp
+    return df_tmp
 
-
-df = st.session_state.df.copy()
-
-# ---------- ENVÍO A EMISARIO ----------
-if st.session_state.df_envio is None:
-
+def cargar_envio_emisario():
     df_envio_tmp = cargar_tabla("""
         SELECT
             dia,
@@ -229,15 +225,10 @@ if st.session_state.df_envio is None:
             columns=["dia", "envio_emisario"]
         )
 
-    st.session_state.df_envio = df_envio_tmp
+    return df_envio_tmp
 
-df_envio = st.session_state.df_envio.copy()
-
-# -----------------------------------------------------
-# ESTIMADOS UPA PERSISTENTES
-# -----------------------------------------------------
-if st.session_state.df_est is None:
-    st.session_state.df_est = cargar_tabla(
+def cargar_estimados(anio_actual):
+    return cargar_tabla(
         """
         SELECT
             anio,
@@ -246,8 +237,38 @@ if st.session_state.df_est is None:
         FROM estimados_upa
         WHERE anio = %s
         """,
-        (anio,)
+        (anio_actual,)
     )
+
+def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estimados=True):
+    if recargar_analiticas:
+        st.session_state.df = cargar_analiticas()
+    if recargar_envio:
+        st.session_state.df_envio = cargar_envio_emisario()
+    if recargar_estimados:
+        st.session_state.df_est = cargar_estimados(anio)
+
+
+# ---------- ANALÍTICAS ----------
+if st.session_state.df is None:
+
+    st.session_state.df = cargar_analiticas()
+
+
+df = st.session_state.df.copy()
+
+# ---------- ENVÍO A EMISARIO ----------
+if st.session_state.df_envio is None:
+
+    st.session_state.df_envio = cargar_envio_emisario()
+
+df_envio = st.session_state.df_envio.copy()
+
+# -----------------------------------------------------
+# ESTIMADOS UPA PERSISTENTES
+# -----------------------------------------------------
+if st.session_state.df_est is None:
+    st.session_state.df_est = cargar_estimados(anio)
 
 df_est = st.session_state.df_est
 
@@ -617,6 +638,12 @@ with tab_dashboard:
                             )
                 
                             st.success("✅ Estimados UPA guardados correctamente")
+                            recargar_datos(
+                                recargar_analiticas=False,
+                                recargar_envio=False,
+                                recargar_estimados=True,
+                            )
+                            st.rerun()
                 
                         # -------------------------------------------------
                         # 🔢 CÁLCULO ÚNICO DE UPA (FUENTE DE VERDAD)
@@ -1150,6 +1177,12 @@ with tab_gestion:
             )
         
             st.success("Analítica guardada correctamente")
+            recargar_datos(
+                recargar_analiticas=True,
+                recargar_envio=True,
+                recargar_estimados=False,
+            )
+            st.rerun()
             ()
         
     # ---------- TABLA EDITABLE ----------
@@ -1184,6 +1217,12 @@ with tab_gestion:
                     )
     
                 st.success("Tabla actualizada correctamente")
+                recargar_datos(
+                    recargar_analiticas=True,
+                    recargar_envio=True,
+                    recargar_estimados=False,
+                )
+                st.rerun()
     
     
     # ---------- ENVÍO A EMISARIO ----------
@@ -1223,6 +1262,12 @@ with tab_gestion:
                     put_conn(conn)
             
                 st.success("Envío a emisario actualizado")
+                recargar_datos(
+                    recargar_analiticas=False,
+                    recargar_envio=True,
+                    recargar_estimados=False,
+                )
+                st.rerun()
                 ()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
@@ -1343,6 +1388,13 @@ with tab_gestion:
                     st.warning(f"⚠️ Filas con error: {errores}")
         
                 ()
+                if total_insertados > 0:
+                    recargar_datos(
+                        recargar_analiticas=True,
+                        recargar_envio=True,
+                        recargar_estimados=False,
+                    )
+                    st.rerun()
 
         # =====================================================
         # 📥 IMPORTAR ENVÍO A EMISARIO DESDE EXCEL
@@ -1430,6 +1482,13 @@ with tab_gestion:
                             st.warning(f"⚠️ Filas con error: {errores}")
         
                         ()
+                        if insertados > 0:
+                            recargar_datos(
+                                recargar_analiticas=False,
+                                recargar_envio=True,
+                                recargar_estimados=False,
+                            )
+                            st.rerun()
         
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
