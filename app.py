@@ -1215,12 +1215,12 @@ with tab_gestion:
                                 """,
                                 (
                                     r["dia"],
-                                    bool(r["envio_emisario"])
+                                    int(bool(r["envio_emisario"])),
                                 )
                             )
                     conn.commit()
                 finally:
-                    conn.close()
+                    put_conn(conn)
             
                 st.success("Envío a emisario actualizado")
                 ()
