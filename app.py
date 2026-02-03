@@ -250,6 +250,18 @@ def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estim
 
 
 # ---------- ANALÍTICAS ----------
+def cargar_datos_iniciales():
+    if st.session_state.df is None:
+        st.session_state.df = cargar_analiticas()
+    if st.session_state.df_envio is None:
+        st.session_state.df_envio = cargar_envio_emisario()
+    if st.session_state.df_est is None:
+        st.session_state.df_est = cargar_estimados(anio)
+
+
+cargar_datos_iniciales()
+
+df = st.session_state.df.copy()
 if st.session_state.df is None:
 
     st.session_state.df = cargar_analiticas()
