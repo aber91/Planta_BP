@@ -575,6 +575,8 @@ with tab_dashboard:
                     dias_transcurridos = len(df_anual)
                     dias_totales = 365
                     dias_restantes = max(dias_totales - dias_transcurridos, 0)
+                    upa_hc = None
+                    upa_dqo = None
                 
                     if dias_transcurridos == 0:
                         st.info("No hay suficientes datos para calcular la UPA.")
@@ -717,33 +719,29 @@ with tab_dashboard:
 
                 df_val["mes"] = df_val["dia"].apply(lambda d: d.month)
 
-                prom_mensual = (
+                stats_mensual = (
                     df_val.groupby("mes")[parametro]
-                    .mean()
+                    .agg(["mean", "count", "sum"])
                     .reindex(range(1, 13))
                 )
 
-                prom_acum = prom_mensual.expanding().mean()
+                prom_mensual = stats_mensual["mean"]
+                conteos = stats_mensual["count"]
+                sumas = stats_mensual["sum"]
 
-                # --------- PROYECCIÓN UPA PROGRESIVA (ALINEADA CON UPA NUMÉRICA) ---------
+                prom_acum = sumas.cumsum() / conteos.cumsum()
+
+                # --------- PROYECCIÓN UPA (ALINEADA CON UPA NUMÉRICA) ---------
                 proy = prom_acum.copy()
-                
-                meses_reales = prom_mensual.dropna()
-                
+
+                upa_val = upa_hc if parametro == "HC" else upa_dqo
+                meses_reales = conteos.dropna()
+
                 if not meses_reales.empty:
                     ultimo_mes = meses_reales.index.max()
-                
-                    # 🔑 MISMO estimado efectivo que el bloque UPA
-                    est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
-                
-                    # Suma y número de meses reales
-                    suma_real = meses_reales.sum()
-                    n_real = len(meses_reales)
-                
-                    for m in range(ultimo_mes + 1, 13):
-                        suma_real += est_eff
-                        n_real += 1
-                        proy.loc[m] = suma_real / n_real
+                    if upa_val is not None:
+                        for m in range(ultimo_mes + 1, 13):
+                            proy.loc[m] = upa_val
                 
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
