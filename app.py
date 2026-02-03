@@ -170,6 +170,10 @@ def cargar_tabla(query, params=None):
     finally:
         put_conn(conn)
 
+
+# ---------- ANALÍTICAS ----------
+if st.session_state.df is None:
+
 def cargar_analiticas():
     df_tmp = cargar_tabla("""
         SELECT
