@@ -1051,6 +1051,7 @@ with tab_dashboard:
     df_eff = calcular_eficiencias_diarias(df_plot, param_sel)
     
     if not df_eff.empty:
+        df_eff = df_eff.sort_values("dia")
     
         fig_eff = go.Figure()
     
@@ -1135,27 +1136,49 @@ with tab_dashboard:
     # -------------------------------------------------
     # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
     # -------------------------------------------------
-    st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
+    st.markdown("### 🧠 Diagnóstico automático – HC y DQO")
     
     # -------------------------------------------------
     # 🧠 MOSTRAR RESULTADO DEL DIAGNÓSTICO
     # -------------------------------------------------
-    diag = diagnostico_filtros_fca(df_plot, param_sel)
-    
-    if diag is None:
-        st.info("No hay datos suficientes para el diagnóstico automático.")
-    else:
-        if diag["estado"].startswith("🔴"):
-            st.error(f"{diag['estado']}\n\n{diag['mensaje']}")
-        elif diag["estado"].startswith("🟠"):
-            st.warning(f"{diag['estado']}\n\n{diag['mensaje']}")
+    diag_hc = diagnostico_filtros_fca(df_plot, "HC")
+    diag_dqo = diagnostico_filtros_fca(df_plot, "DQO")
+
+    col_diag_hc, col_diag_dqo = st.columns(2)
+
+    with col_diag_hc:
+        st.markdown("**HC**")
+        if diag_hc is None:
+            st.info("No hay datos suficientes para el diagnóstico automático.")
         else:
-            st.success(f"{diag['estado']}\n\n{diag['mensaje']}")
-    
-        if diag.get("motivos"):
-            st.markdown("**Motivos detectados:**")
-            for m in diag["motivos"]:
-                st.markdown(f"- {m}")
+            if diag_hc["estado"].startswith("🔴"):
+                st.error(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+            elif diag_hc["estado"].startswith("🟠"):
+                st.warning(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+            else:
+                st.success(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+
+            if diag_hc.get("motivos"):
+                st.markdown("**Motivos detectados:**")
+                for m in diag_hc["motivos"]:
+                    st.markdown(f"- {m}")
+
+    with col_diag_dqo:
+        st.markdown("**DQO**")
+        if diag_dqo is None:
+            st.info("No hay datos suficientes para el diagnóstico automático.")
+        else:
+            if diag_dqo["estado"].startswith("🔴"):
+                st.error(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+            elif diag_dqo["estado"].startswith("🟠"):
+                st.warning(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+            else:
+                st.success(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+
+            if diag_dqo.get("motivos"):
+                st.markdown("**Motivos detectados:**")
+                for m in diag_dqo["motivos"]:
+                    st.markdown(f"- {m}")
 
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
