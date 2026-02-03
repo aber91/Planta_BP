@@ -170,6 +170,10 @@ def cargar_tabla(query, params=None):
     finally:
         put_conn(conn)
 
+
+# ---------- ANALÍTICAS ----------
+if st.session_state.df is None:
+
 def cargar_analiticas():
     df_tmp = cargar_tabla("""
         SELECT
@@ -258,11 +262,26 @@ def cargar_datos_iniciales():
 cargar_datos_iniciales()
 
 df = st.session_state.df.copy()
+if st.session_state.df is None:
+
+    st.session_state.df = cargar_analiticas()
+
+
+df = st.session_state.df.copy()
+
+# ---------- ENVÍO A EMISARIO ----------
+if st.session_state.df_envio is None:
+
+    st.session_state.df_envio = cargar_envio_emisario()
+
 df_envio = st.session_state.df_envio.copy()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
+if st.session_state.df_est is None:
+    st.session_state.df_est = cargar_estimados(anio)
+
 df_est = st.session_state.df_est
 
 def get_estimado(param):
