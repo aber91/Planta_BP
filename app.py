@@ -8,7 +8,8 @@ import altair as alt
 import plotly.graph_objects as go
 import calendar
 import psycopg2
-import psycopg2.extras   
+import psycopg2.extras
+from psycopg2.pool import SimpleConnectionPool
 
 # =====================================================
 # SESSION STATE – CONTROL DE CARGAS
@@ -27,8 +28,11 @@ if "df_est" not in st.session_state:
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
 
-def get_conn():
-    return psycopg2.connect(
+@st.cache_resource
+def get_pool():
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=5,
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
         dbname=st.secrets["DB_NAME"],
@@ -38,6 +42,13 @@ def get_conn():
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
+def get_conn():
+    return get_pool().getconn()
+
+def put_conn(conn):
+    if conn is not None:
+        get_pool().putconn(conn)
+
 def ejecutar_sql(sql, params=None):
     conn = get_conn()
     try:
@@ -45,21 +56,24 @@ def ejecutar_sql(sql, params=None):
             cur.execute(sql, params)
         conn.commit()
     finally:
-        conn.close()
+        put_conn(conn)
 
 # -----------------------------------------------------
 # 🔌 CHECK CONEXIÓN BASE DE DATOS (NEON)
 # -----------------------------------------------------
 def check_db_connection():
+    conn = None
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("SELECT 1;")
             cur.fetchone()
-        conn.close()
         return True, None
     except Exception as e:
         return False, str(e)
+    finally:
+        if conn is not None:
+            put_conn(conn)
 
 ok_db, db_error = check_db_connection()
 
@@ -109,34 +123,38 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # - NO volver a crear tablas en otras partes de la app
 # - NO usar conn.execute ni conn.commit aquí
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS analiticas (
-    id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMP NOT NULL,
-    punto TEXT NOT NULL,
-    HC DOUBLE PRECISION,
-    SS DOUBLE PRECISION,
-    DQO DOUBLE PRECISION,
-    Sulf DOUBLE PRECISION,
-    UNIQUE (ts, punto)
-);
-""")
+@st.cache_resource
+def init_db():
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS analiticas (
+        id BIGSERIAL PRIMARY KEY,
+        ts TIMESTAMP NOT NULL,
+        punto TEXT NOT NULL,
+        HC DOUBLE PRECISION,
+        SS DOUBLE PRECISION,
+        DQO DOUBLE PRECISION,
+        Sulf DOUBLE PRECISION,
+        UNIQUE (ts, punto)
+    );
+    """)
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS envio_emisario (
-    dia DATE PRIMARY KEY,
-    envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0,1))
-);
-""")
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS envio_emisario (
+        dia DATE PRIMARY KEY,
+        envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0,1))
+    );
+    """)
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS estimados_upa (
-    anio INTEGER NOT NULL,
-    parametro TEXT NOT NULL,
-    valor DOUBLE PRECISION NOT NULL,
-    PRIMARY KEY (anio, parametro)
-);
-""")
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS estimados_upa (
+        anio INTEGER NOT NULL,
+        parametro TEXT NOT NULL,
+        valor DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY (anio, parametro)
+    );
+    """)
+
+init_db()
 
 # =====================================================
 # CARGA DE DATOS DESDE NEON (CONTROLADA POR SESIÓN)
@@ -150,7 +168,7 @@ def cargar_tabla(query, params=None):
             rows = cur.fetchall()
         return pd.DataFrame(rows)
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 # ---------- ANALÍTICAS ----------
@@ -1074,76 +1092,6 @@ with tab_dashboard:
     # -------------------------------------------------
     st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
     
-    def diagnostico_filtros_fca(df_plot, parametro):
-        """
-        Diagnóstico automático de filtros FCA
-        Basado en tendencia reciente (EMA7) y eficiencia real
-        """
-    
-        resultado = {
-            "estado": "🟢 Normal",
-            "mensaje": "Funcionamiento dentro de parámetros normales.",
-            "motivos": []
-        }
-    
-        if parametro not in ["HC", "DQO"]:
-            return resultado
-    
-        # ---------- SALIDA FCA ----------
-        df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
-        if df_salida.empty or len(df_salida) < 7:
-            return resultado
-    
-        df_salida = analitica_valida_salida_fca(df_salida)
-        df_salida = df_salida.sort_values("ts")
-    
-        # ---------- EMA 7 ----------
-        df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
-        ema_diff = df_salida["EMA7"].diff().dropna()
-    
-        ema_diff_reciente = ema_diff.tail(5)
-        subidas_recientes = (ema_diff_reciente > 0).sum()
-    
-        # ---------- EFICIENCIA ----------
-        df_eff = calcular_eficiencias_diarias(df_plot, parametro)
-        eff_reciente = df_eff["E_X507_Salida"].dropna().tail(5)
-    
-        eff_media = eff_reciente.mean() if not eff_reciente.empty else None
-        eff_tendencia = eff_reciente.diff().mean() if len(eff_reciente) > 1 else 0
-    
-        # ---------- ENTRADA ESTABLE ----------
-        df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
-        entrada_estable = True
-        if not df_ent.empty:
-            ent_vals = df_ent.sort_values("ts")[parametro].tail(5)
-            if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
-                entrada_estable = False
-    
-        # ---------- LÓGICA FINAL ----------
-        if (
-            subidas_recientes >= 3 and
-            eff_media is not None and eff_media < 60 and
-            eff_tendencia < 0 and
-            entrada_estable
-        ):
-            resultado["estado"] = "🔴 Posible limpieza de filtros"
-            resultado["mensaje"] = "Deriva negativa sostenida en salida FCA."
-            resultado["motivos"] = [
-                "Tendencia reciente ascendente en salida FCA (EMA 7)",
-                "Eficiencia en descenso en etapa X-507 → Salida FCA",
-                "Entrada estable"
-            ]
-    
-        elif subidas_recientes >= 2 and eff_tendencia < 0:
-            resultado["estado"] = "🟠 Vigilancia"
-            resultado["mensaje"] = "Se detectan señales tempranas de desviación."
-            resultado["motivos"] = [
-                "Tendencia reciente al alza",
-                "Ligera caída de eficiencia"
-            ]
-    
-        return resultado
-
     # -------------------------------------------------
     # 🧠 MOSTRAR RESULTADO DEL DIAGNÓSTICO
     # -------------------------------------------------
@@ -1535,4 +1483,3 @@ with tab_gestion:
 
 st.sidebar.markdown("### 🧪 Diagnóstico DB")
 st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
-
