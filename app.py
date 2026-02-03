@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import os
-import sqlite3
-import subprocess
-import altair as alt
+
 import plotly.graph_objects as go
 import calendar
 import psycopg2
@@ -54,6 +52,17 @@ def ejecutar_sql(sql, params=None):
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
+        conn.commit()
+    finally:
+        put_conn(conn)
+
+def ejecutar_sql_many(sql, params_list):
+    if not params_list:
+        return
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(sql, params_list)
         conn.commit()
     finally:
         put_conn(conn)
@@ -618,24 +627,17 @@ with tab_dashboard:
                         # 💾 Guardar estimados UPA (Postgres)
                         # -------------------------------------------------
                         if st.button("💾 Guardar estimados UPA"):
-                            ejecutar_sql(
+                            ejecutar_sql_many(
                                 """
                                 INSERT INTO estimados_upa (anio, parametro, valor)
                                 VALUES (%s, %s, %s)
                                 ON CONFLICT (anio, parametro)
                                 DO UPDATE SET valor = EXCLUDED.valor
                                 """,
-                                (anio, "HC", float(est_hc))
-                            )
-                
-                            ejecutar_sql(
-                                """
-                                INSERT INTO estimados_upa (anio, parametro, valor)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (anio, parametro)
-                                DO UPDATE SET valor = EXCLUDED.valor
-                                """,
-                                (anio, "DQO", float(est_dqo))
+                                [
+                                    (anio, "HC", float(est_hc)),
+                                    (anio, "DQO", float(est_dqo)),
+                                ],
                             )
                 
                             st.success("✅ Estimados UPA guardados correctamente")
@@ -1239,23 +1241,26 @@ with tab_gestion:
                 # Vaciar tabla
                 ejecutar_sql("DELETE FROM analiticas")
     
-                # Reinsertar fila a fila (persistencia garantizada)
-                for _, row in df_edit.iterrows():
-                    ejecutar_sql(
-                        """
-                        INSERT INTO analiticas
-                        (ts, punto, HC, SS, DQO, Sulf)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            row["ts"],
-                            row["punto"],
-                            row["HC"],
-                            row["SS"],
-                            row["DQO"],
-                            row["Sulf"],
-                        ),
+                # Reinsertar en lote (persistencia garantizada)
+                filas = [
+                    (
+                        row["ts"],
+                        row["punto"],
+                        row["HC"],
+                        row["SS"],
+                        row["DQO"],
+                        row["Sulf"],
                     )
+                    for _, row in df_edit.iterrows()
+                ]
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO analiticas
+                    (ts, punto, HC, SS, DQO, Sulf)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    filas,
+                )
     
                 st.success("Tabla actualizada correctamente")
                 recargar_datos(
@@ -1284,23 +1289,20 @@ with tab_gestion:
             if st.button("💾 Guardar envío a emisario"):
                 ejecutar_sql("DELETE FROM envio_emisario")
             
-                conn = get_conn()
-                try:
-                    with conn.cursor() as cur:
-                        for _, r in tabla_edit.iterrows():
-                            cur.execute(
-                                """
-                                INSERT INTO envio_emisario (dia, envio_emisario)
-                                VALUES (%s, %s)
-                                """,
-                                (
-                                    r["dia"],
-                                    int(bool(r["envio_emisario"])),
-                                )
-                            )
-                    conn.commit()
-                finally:
-                    put_conn(conn)
+                filas_envio = [
+                    (
+                        r["dia"],
+                        int(bool(r["envio_emisario"])),
+                    )
+                    for _, r in tabla_edit.iterrows()
+                ]
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO envio_emisario (dia, envio_emisario)
+                    VALUES (%s, %s)
+                    """,
+                    filas_envio,
+                )
             
                 st.success("Envío a emisario actualizado")
                 recargar_datos(
@@ -1365,6 +1367,7 @@ with tab_gestion:
             if st.button("🚀 Importar datos XLSX"):
                 total_insertados = 0
                 errores = 0
+                filas_insert = []
         
                 for punto, archivo in archivos.items():
                     if archivo is None:
@@ -1394,17 +1397,7 @@ with tab_gestion:
                                 datetime.strptime("12:00", "%H:%M").time()
                             )
         
-                            ejecutar_sql(
-                                """
-                                INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (ts, punto)
-                                DO UPDATE SET
-                                    hc = EXCLUDED.hc,
-                                    ss = EXCLUDED.ss,
-                                    dqo = EXCLUDED.dqo,
-                                    sulf = EXCLUDED.sulf
-                                """,
+                            filas_insert.append(
                                 (
                                     ts,
                                     punto,
@@ -1414,11 +1407,24 @@ with tab_gestion:
                                     None if pd.isna(r["Sulf"]) else float(r["Sulf"]),
                                 )
                             )
-        
                             total_insertados += 1
         
                         except Exception:
                             errores += 1
+
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ts, punto)
+                    DO UPDATE SET
+                        hc = EXCLUDED.hc,
+                        ss = EXCLUDED.ss,
+                        dqo = EXCLUDED.dqo,
+                        sulf = EXCLUDED.sulf
+                    """,
+                    filas_insert,
+                )
         
                 if total_insertados > 0:
                     st.success(f"✅ Importación completada: {total_insertados} filas insertadas")
@@ -1469,6 +1475,7 @@ with tab_gestion:
                 else:
                     insertados = 0
                     errores = 0
+                    filas_envio = []
         
                     try:
                         df_env = pd.read_excel(
@@ -1499,20 +1506,21 @@ with tab_gestion:
                                 else:
                                     envio = 1 if int(val) == 1 else 0
         
-                                ejecutar_sql(
-                                    """
-                                    INSERT INTO envio_emisario (dia, envio_emisario)
-                                    VALUES (%s, %s)
-                                    ON CONFLICT (dia)
-                                    DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
-                                    """,
-                                    (dia, envio)
-                                )
-        
+                                filas_envio.append((dia, envio))
                                 insertados += 1
         
                             except Exception:
                                 errores += 1
+
+                        ejecutar_sql_many(
+                            """
+                            INSERT INTO envio_emisario (dia, envio_emisario)
+                            VALUES (%s, %s)
+                            ON CONFLICT (dia)
+                            DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
+                            """,
+                            filas_envio,
+                        )
         
                         if insertados > 0:
                             st.success(f"✅ Envío a emisario importado: {insertados} días")
