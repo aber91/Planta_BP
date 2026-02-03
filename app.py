@@ -170,12 +170,9 @@ def cargar_tabla(query, params=None):
     finally:
         put_conn(conn)
 
-
-# ---------- ANALÍTICAS ----------
-if st.session_state.df is None:
-
 def cargar_analiticas():
-    df_tmp = cargar_tabla("""
+    df_tmp = cargar_tabla(
+        """
         SELECT
             id,
             ts,
@@ -186,19 +183,22 @@ def cargar_analiticas():
             sulf
         FROM analiticas
         ORDER BY ts
-    """)
+        """
+    )
 
     if not df_tmp.empty:
         df_tmp["ts"] = pd.to_datetime(df_tmp["ts"], errors="coerce")
         df_tmp = df_tmp.dropna(subset=["ts"])
         df_tmp["dia"] = df_tmp["ts"].dt.date
 
-        df_tmp = df_tmp.rename(columns={
-            "hc": "HC",
-            "ss": "SS",
-            "dqo": "DQO",
-            "sulf": "Sulf",
-        })
+        df_tmp = df_tmp.rename(
+            columns={
+                "hc": "HC",
+                "ss": "SS",
+                "dqo": "DQO",
+                "sulf": "Sulf",
+            }
+        )
     else:
         df_tmp = pd.DataFrame(
             columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
@@ -262,26 +262,11 @@ def cargar_datos_iniciales():
 cargar_datos_iniciales()
 
 df = st.session_state.df.copy()
-if st.session_state.df is None:
-
-    st.session_state.df = cargar_analiticas()
-
-
-df = st.session_state.df.copy()
-
-# ---------- ENVÍO A EMISARIO ----------
-if st.session_state.df_envio is None:
-
-    st.session_state.df_envio = cargar_envio_emisario()
-
 df_envio = st.session_state.df_envio.copy()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
-if st.session_state.df_est is None:
-    st.session_state.df_est = cargar_estimados(anio)
-
 df_est = st.session_state.df_est
 
 def get_estimado(param):
