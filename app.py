@@ -107,7 +107,8 @@ DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
-PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
+PUNTOS_BP = ["Entrada Planta", "X-507", "Salida FCA"]
+PUNTOS = PUNTOS_BP + ["Pluviales"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
 
 LIMITES = {
@@ -405,7 +406,7 @@ def calcular_eficiencias_diarias(df, parametro):
         fila = {"dia": dia}
 
         valores = {}
-        for punto in ["Entrada Planta", "X-507", "Salida FCA"]:
+        for punto in PUNTOS_BP:
             df_p = g[g["punto"] == punto]
             if not df_p.empty:
                 valores[punto] = df_p.sort_values("ts").iloc[-1][parametro]
@@ -949,6 +950,7 @@ with tab_dashboard:
                 "Entrada Planta": "blue",
                 "X-507": "orange",
                 "Salida FCA": "green",
+                "Pluviales": "purple",
             }
     
             for p in PUNTOS:
@@ -1243,19 +1245,24 @@ with tab_gestion:
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
-        if not df.empty:
-            df_edit = st.data_editor(
-                df.drop(columns=["dia"]),
+        df_bp = df[df["punto"].isin(PUNTOS_BP)].copy()
+        df_pluv_tab = df[df["punto"] == "Pluviales"].copy()
+
+        st.markdown("#### Planta BP")
+        if not df_bp.empty:
+            df_edit_bp = st.data_editor(
+                df_bp.drop(columns=["dia"]),
                 use_container_width=True,
                 hide_index=True,
+                key="tabla_bp_editor",
             )
-    
-            if st.button("Guardar cambios en tabla"):
-                # Vaciar tabla
-                ejecutar_sql("DELETE FROM analiticas")
-    
-                # Reinsertar en lote (persistencia garantizada)
-                filas = [
+
+            if st.button("Guardar Planta BP"):
+                ejecutar_sql(
+                    "DELETE FROM analiticas WHERE punto <> 'Pluviales'"
+                )
+
+                filas_bp = [
                     (
                         row["ts"],
                         row["punto"],
@@ -1264,7 +1271,7 @@ with tab_gestion:
                         row["DQO"],
                         row["Sulf"],
                     )
-                    for _, row in df_edit.iterrows()
+                    for _, row in df_edit_bp.iterrows()
                 ]
                 ejecutar_sql_many(
                     """
@@ -1272,22 +1279,74 @@ with tab_gestion:
                     (ts, punto, HC, SS, DQO, Sulf)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    filas,
+                    filas_bp,
                 )
-    
-                st.success("Tabla actualizada correctamente")
+
+                st.success("Tabla Planta BP actualizada correctamente")
                 recargar_datos(
                     recargar_analiticas=True,
                     recargar_envio=True,
                     recargar_estimados=False,
                 )
                 st.rerun()
+        else:
+            st.info("No hay datos de Planta BP en la tabla.")
+
+        st.markdown("#### Pluviales")
+        if not df_pluv_tab.empty:
+            df_edit_pluv = st.data_editor(
+                df_pluv_tab.drop(columns=["dia"]),
+                use_container_width=True,
+                hide_index=True,
+                key="tabla_pluviales_editor",
+            )
+        else:
+            df_edit_pluv = st.data_editor(
+                pd.DataFrame(columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf"]),
+                use_container_width=True,
+                hide_index=True,
+                key="tabla_pluviales_editor",
+            )
+
+        if st.button("Guardar Pluviales"):
+            ejecutar_sql(
+                "DELETE FROM analiticas WHERE punto = 'Pluviales'"
+            )
+
+            filas_pluv = [
+                (
+                    row["ts"],
+                    "Pluviales",
+                    row["HC"],
+                    row["SS"],
+                    row["DQO"],
+                    row["Sulf"],
+                )
+                for _, row in df_edit_pluv.iterrows()
+            ]
+            ejecutar_sql_many(
+                """
+                INSERT INTO analiticas
+                (ts, punto, HC, SS, DQO, Sulf)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                filas_pluv,
+            )
+
+            st.success("Tabla Pluviales actualizada correctamente")
+            recargar_datos(
+                recargar_analiticas=True,
+                recargar_envio=False,
+                recargar_estimados=False,
+            )
+            st.rerun()
     
     
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
-        if not df.empty:
-            dias = df[["dia"]].drop_duplicates().sort_values("dia")
+        df_bp = df[df["punto"].isin(PUNTOS_BP)]
+        if not df_bp.empty:
+            dias = df_bp[["dia"]].drop_duplicates().sort_values("dia")
     
             tabla_env = dias.merge(
                 df_envio, on="dia", how="left"
@@ -1374,6 +1433,9 @@ with tab_gestion:
                 ),
                 "Salida FCA": st.file_uploader(
                     "📄 salidafca.xlsx", type=["xlsx"], key="xlsx_fca"
+                ),
+                "Pluviales": st.file_uploader(
+                    "📄 pluviales.xlsx", type=["xlsx"], key="xlsx_pluviales"
                 ),
             }
         
