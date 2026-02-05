@@ -405,6 +405,51 @@ def texto_margen(margen):
         return f":orange[Margen previsto: +{margen:.1f} ppm]"
     return f":green[Margen previsto: +{margen:.1f} ppm]"
 
+
+def normalizar_filas_analiticas(df_src, punto_forzado=None):
+    filas = []
+    errores = 0
+
+    for _, row in df_src.iterrows():
+        try:
+            ts = pd.to_datetime(row.get("ts"), errors="coerce")
+            if pd.isna(ts):
+                continue
+
+            punto = punto_forzado if punto_forzado is not None else row.get("punto")
+            if pd.isna(punto) or punto is None:
+                continue
+
+            def to_num(v):
+                if v is None or pd.isna(v):
+                    return None
+                return float(v)
+
+            filas.append((
+                ts.to_pydatetime(),
+                str(punto),
+                to_num(row.get("HC")),
+                to_num(row.get("SS")),
+                to_num(row.get("DQO")),
+                to_num(row.get("Sulf")),
+            ))
+        except Exception:
+            errores += 1
+
+    return filas, errores
+
+
+def ultima_muestra_para_estado(df_punto, columnas=("HC", "DQO")):
+    if df_punto.empty:
+        return None
+
+    df_ord = df_punto.sort_values("ts")
+    df_util = df_ord.dropna(subset=list(columnas), how="all")
+    if not df_util.empty:
+        return df_util.iloc[-1]
+    return df_ord.iloc[-1]
+
+
 @st.cache_data(show_spinner=False)
 def calcular_eficiencias_diarias(df, parametro):
     """
@@ -843,7 +888,7 @@ with tab_dashboard:
         df_pluviales = df[df["punto"] == "Pluviales"].sort_values("ts")
     
         ultima = df_val.iloc[-1]
-        ultima_pluv = df_pluviales.iloc[-1] if not df_pluviales.empty else None
+        ultima_pluv = ultima_muestra_para_estado(df_pluviales, ("HC", "DQO"))
     
         fecha_txt = ultima["ts"].strftime("%d/%m/%Y %H:%M")
         fecha_txt_pluv = (
@@ -1349,17 +1394,10 @@ with tab_gestion:
                 "DELETE FROM analiticas WHERE punto = 'Pluviales'"
             )
 
-            filas_pluv = [
-                (
-                    row["ts"],
-                    "Pluviales",
-                    row["HC"],
-                    row["SS"],
-                    row["DQO"],
-                    row["Sulf"],
-                )
-                for _, row in df_edit_pluv.iterrows()
-            ]
+            filas_pluv, errores_pluv = normalizar_filas_analiticas(
+                df_edit_pluv,
+                punto_forzado="Pluviales",
+            )
             ejecutar_sql_many(
                 """
                 INSERT INTO analiticas
@@ -1369,7 +1407,9 @@ with tab_gestion:
                 filas_pluv,
             )
 
-            st.success("Tabla Pluviales actualizada correctamente")
+            st.success(f"Tabla Pluviales actualizada correctamente ({len(filas_pluv)} filas)")
+            if errores_pluv > 0:
+                st.warning(f"⚠️ Filas de pluviales con error: {errores_pluv}")
             recargar_datos(
                 recargar_analiticas=True,
                 recargar_envio=False,
