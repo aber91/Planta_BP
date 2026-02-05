@@ -116,6 +116,11 @@ LIMITES = {
     "DQO": {"puntual": 700, "anual": 125},
 }
 
+LIMITES_PLUVIALES = {
+    "HC": 5,
+    "DQO": 125,
+}
+
 anio = date.today().year
 
 # -----------------------------------------------------
@@ -336,6 +341,15 @@ def estado_global(hc, dqo):
     if hc > LIMITES["HC"]["puntual"] or dqo > LIMITES["DQO"]["puntual"]:
         return "🔴 NO CONFORME"
     if hc > LIMITES["HC"]["anual"] or dqo > LIMITES["DQO"]["anual"]:
+        return "🟠 ATENCIÓN"
+    return "🟢 OK"
+
+def estado_global_pluviales(hc, dqo):
+    if pd.isna(hc) or pd.isna(dqo):
+        return "⚪ Sin dato"
+    if hc > LIMITES_PLUVIALES["HC"] or dqo > LIMITES_PLUVIALES["DQO"]:
+        return "🔴 NO CONFORME"
+    if hc > LIMITES_PLUVIALES["HC"] * 0.8 or dqo > LIMITES_PLUVIALES["DQO"] * 0.8:
         return "🟠 ATENCIÓN"
     return "🟢 OK"
 
@@ -861,6 +875,20 @@ with tab_dashboard:
         else:
             st.success(f"Estado global: {estado}")
 
+        if ultima_pluv is not None:
+            estado_pluv = estado_global_pluviales(
+                ultima_pluv["HC"],
+                ultima_pluv["DQO"],
+            )
+            if estado_pluv.startswith("🔴"):
+                st.error(f"Estado global pluviales: {estado_pluv}")
+            elif estado_pluv.startswith("🟠"):
+                st.warning(f"Estado global pluviales: {estado_pluv}")
+            else:
+                st.success(f"Estado global pluviales: {estado_pluv}")
+        else:
+            st.info("Estado global pluviales: ⚪ Sin dato")
+
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Análisis gráfico")
     @st.cache_data(show_spinner=False)
@@ -890,7 +918,7 @@ with tab_dashboard:
     
     punto_sel = c1.selectbox(
         "Punto",
-        ["Entrada Planta", "X-507", "Salida FCA", "Comparativo"],
+        ["Entrada Planta", "X-507", "Salida FCA", "Pluviales", "Comparativo"],
         index=2,  # Salida FCA por defecto
         key="graf_punto"
     )
@@ -1024,7 +1052,15 @@ with tab_dashboard:
         # -------------------------------------------------
         # Límites legales
         # -------------------------------------------------
-        if param_sel in LIMITES:
+        if punto_sel == "Pluviales" and param_sel in LIMITES_PLUVIALES:
+            fig.add_hline(
+                y=LIMITES_PLUVIALES[param_sel],
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Límite pluviales",
+                annotation_position="top left"
+            )
+        elif param_sel in LIMITES:
             fig.add_hline(
                 y=LIMITES[param_sel]["anual"],
                 line_dash="dash",
