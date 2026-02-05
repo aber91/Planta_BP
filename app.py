@@ -825,18 +825,31 @@ with tab_dashboard:
         # Aplicar lógica de analítica válida por día
         df_val = analitica_valida_salida_fca(df_salida)
         df_val = df_val.sort_values("ts")
+        df_pluviales = df[df["punto"] == "Pluviales"].sort_values("ts")
     
         ultima = df_val.iloc[-1]
+        ultima_pluv = df_pluviales.iloc[-1] if not df_pluviales.empty else None
     
         fecha_txt = ultima["ts"].strftime("%d/%m/%Y %H:%M")
+        fecha_txt_pluv = (
+            ultima_pluv["ts"].strftime("%d/%m/%Y %H:%M")
+            if ultima_pluv is not None else "Sin dato"
+        )
     
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("HC", ultima["HC"])
-        c2.metric("DQO", ultima["DQO"])
-        c3.metric("SS", ultima["SS"])
-        c4.metric("Sulf", ultima["Sulf"])
+        c1.metric("HC (Salida FCA)", ultima["HC"])
+        c2.metric("DQO (Salida FCA)", ultima["DQO"])
+        c3.metric(
+            "HC (Pluviales)",
+            ultima_pluv["HC"] if ultima_pluv is not None else "—"
+        )
+        c4.metric(
+            "DQO (Pluviales)",
+            ultima_pluv["DQO"] if ultima_pluv is not None else "—"
+        )
     
         st.caption(f"📅 Último análisis disponible: **{fecha_txt}**")
+        st.caption(f"🌧️ Último análisis pluviales: **{fecha_txt_pluv}**")
     
         estado = estado_global(ultima["HC"], ultima["DQO"])
     
