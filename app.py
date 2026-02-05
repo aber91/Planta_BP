@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import os
-import sqlite3
-import subprocess
-import altair as alt
+
 import plotly.graph_objects as go
 import calendar
 import psycopg2
-import psycopg2.extras   
+import psycopg2.extras
+from psycopg2.pool import SimpleConnectionPool
 
 # =====================================================
 # SESSION STATE – CONTROL DE CARGAS
@@ -27,8 +26,11 @@ if "df_est" not in st.session_state:
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
 
-def get_conn():
-    return psycopg2.connect(
+@st.cache_resource
+def get_pool():
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=5,
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
         dbname=st.secrets["DB_NAME"],
@@ -38,6 +40,13 @@ def get_conn():
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
+def get_conn():
+    return get_pool().getconn()
+
+def put_conn(conn):
+    if conn is not None:
+        get_pool().putconn(conn)
+
 def ejecutar_sql(sql, params=None):
     conn = get_conn()
     try:
@@ -45,21 +54,35 @@ def ejecutar_sql(sql, params=None):
             cur.execute(sql, params)
         conn.commit()
     finally:
-        conn.close()
+        put_conn(conn)
+
+def ejecutar_sql_many(sql, params_list):
+    if not params_list:
+        return
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(sql, params_list)
+        conn.commit()
+    finally:
+        put_conn(conn)
 
 # -----------------------------------------------------
 # 🔌 CHECK CONEXIÓN BASE DE DATOS (NEON)
 # -----------------------------------------------------
 def check_db_connection():
+    conn = None
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("SELECT 1;")
             cur.fetchone()
-        conn.close()
         return True, None
     except Exception as e:
         return False, str(e)
+    finally:
+        if conn is not None:
+            put_conn(conn)
 
 ok_db, db_error = check_db_connection()
 
@@ -84,12 +107,18 @@ DB_PATH = os.path.join(PERSISTENT_DIR, "planta.db")
 # -----------------------------------------------------
 # CONSTANTES DE NEGOCIO
 # -----------------------------------------------------
-PUNTOS = ["Entrada Planta", "X-507", "Salida FCA"]
+PUNTOS_BP = ["Entrada Planta", "X-507", "Salida FCA"]
+PUNTOS = PUNTOS_BP + ["Pluviales"]
 PARAMETROS = ["HC", "SS", "DQO", "Sulf"]
 
 LIMITES = {
     "HC": {"puntual": 15, "anual": 2.5},
     "DQO": {"puntual": 700, "anual": 125},
+}
+
+LIMITES_PLUVIALES = {
+    "HC": 5,
+    "DQO": 125,
 }
 
 anio = date.today().year
@@ -109,34 +138,38 @@ st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 # - NO volver a crear tablas en otras partes de la app
 # - NO usar conn.execute ni conn.commit aquí
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS analiticas (
-    id BIGSERIAL PRIMARY KEY,
-    ts TIMESTAMP NOT NULL,
-    punto TEXT NOT NULL,
-    HC DOUBLE PRECISION,
-    SS DOUBLE PRECISION,
-    DQO DOUBLE PRECISION,
-    Sulf DOUBLE PRECISION,
-    UNIQUE (ts, punto)
-);
-""")
+@st.cache_resource
+def init_db():
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS analiticas (
+        id BIGSERIAL PRIMARY KEY,
+        ts TIMESTAMP NOT NULL,
+        punto TEXT NOT NULL,
+        HC DOUBLE PRECISION,
+        SS DOUBLE PRECISION,
+        DQO DOUBLE PRECISION,
+        Sulf DOUBLE PRECISION,
+        UNIQUE (ts, punto)
+    );
+    """)
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS envio_emisario (
-    dia DATE PRIMARY KEY,
-    envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0,1))
-);
-""")
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS envio_emisario (
+        dia DATE PRIMARY KEY,
+        envio_emisario INTEGER NOT NULL CHECK (envio_emisario IN (0,1))
+    );
+    """)
 
-ejecutar_sql("""
-CREATE TABLE IF NOT EXISTS estimados_upa (
-    anio INTEGER NOT NULL,
-    parametro TEXT NOT NULL,
-    valor DOUBLE PRECISION NOT NULL,
-    PRIMARY KEY (anio, parametro)
-);
-""")
+    ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS estimados_upa (
+        anio INTEGER NOT NULL,
+        parametro TEXT NOT NULL,
+        valor DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY (anio, parametro)
+    );
+    """)
+
+init_db()
 
 # =====================================================
 # CARGA DE DATOS DESDE NEON (CONTROLADA POR SESIÓN)
@@ -150,13 +183,11 @@ def cargar_tabla(query, params=None):
             rows = cur.fetchall()
         return pd.DataFrame(rows)
     finally:
-        conn.close()
+        put_conn(conn)
 
-
-# ---------- ANALÍTICAS ----------
-if st.session_state.df is None:
-
-    df_tmp = cargar_tabla("""
+def cargar_analiticas():
+    df_tmp = cargar_tabla(
+        """
         SELECT
             id,
             ts,
@@ -167,32 +198,30 @@ if st.session_state.df is None:
             sulf
         FROM analiticas
         ORDER BY ts
-    """)
+        """
+    )
 
     if not df_tmp.empty:
         df_tmp["ts"] = pd.to_datetime(df_tmp["ts"], errors="coerce")
         df_tmp = df_tmp.dropna(subset=["ts"])
         df_tmp["dia"] = df_tmp["ts"].dt.date
 
-        df_tmp = df_tmp.rename(columns={
-            "hc": "HC",
-            "ss": "SS",
-            "dqo": "DQO",
-            "sulf": "Sulf",
-        })
+        df_tmp = df_tmp.rename(
+            columns={
+                "hc": "HC",
+                "ss": "SS",
+                "dqo": "DQO",
+                "sulf": "Sulf",
+            }
+        )
     else:
         df_tmp = pd.DataFrame(
             columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf", "dia"]
         )
 
-    st.session_state.df = df_tmp
+    return df_tmp
 
-
-df = st.session_state.df.copy()
-
-# ---------- ENVÍO A EMISARIO ----------
-if st.session_state.df_envio is None:
-
+def cargar_envio_emisario():
     df_envio_tmp = cargar_tabla("""
         SELECT
             dia,
@@ -211,15 +240,10 @@ if st.session_state.df_envio is None:
             columns=["dia", "envio_emisario"]
         )
 
-    st.session_state.df_envio = df_envio_tmp
+    return df_envio_tmp
 
-df_envio = st.session_state.df_envio.copy()
-
-# -----------------------------------------------------
-# ESTIMADOS UPA PERSISTENTES
-# -----------------------------------------------------
-if st.session_state.df_est is None:
-    st.session_state.df_est = cargar_tabla(
+def cargar_estimados(anio_actual):
+    return cargar_tabla(
         """
         SELECT
             anio,
@@ -228,9 +252,36 @@ if st.session_state.df_est is None:
         FROM estimados_upa
         WHERE anio = %s
         """,
-        (anio,)
+        (anio_actual,)
     )
 
+def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estimados=True):
+    if recargar_analiticas:
+        st.session_state.df = cargar_analiticas()
+    if recargar_envio:
+        st.session_state.df_envio = cargar_envio_emisario()
+    if recargar_estimados:
+        st.session_state.df_est = cargar_estimados(anio)
+
+
+# ---------- ANALÍTICAS ----------
+def cargar_datos_iniciales():
+    if st.session_state.df is None:
+        st.session_state.df = cargar_analiticas()
+    if st.session_state.df_envio is None:
+        st.session_state.df_envio = cargar_envio_emisario()
+    if st.session_state.df_est is None:
+        st.session_state.df_est = cargar_estimados(anio)
+
+
+cargar_datos_iniciales()
+
+df = st.session_state.df.copy()
+df_envio = st.session_state.df_envio.copy()
+
+# -----------------------------------------------------
+# ESTIMADOS UPA PERSISTENTES
+# -----------------------------------------------------
 df_est = st.session_state.df_est
 
 def get_estimado(param):
@@ -293,6 +344,15 @@ def estado_global(hc, dqo):
         return "🟠 ATENCIÓN"
     return "🟢 OK"
 
+def estado_global_pluviales(hc, dqo):
+    if pd.isna(hc) or pd.isna(dqo):
+        return "⚪ Sin dato"
+    if hc > LIMITES_PLUVIALES["HC"] or dqo > LIMITES_PLUVIALES["DQO"]:
+        return "🔴 NO CONFORME"
+    if hc > LIMITES_PLUVIALES["HC"] * 0.8 or dqo > LIMITES_PLUVIALES["DQO"] * 0.8:
+        return "🟠 ATENCIÓN"
+    return "🟢 OK"
+
 def semaforo_promedio(valor, limite_anual):
     """
     Devuelve un semáforo en función de lo desviado que esté
@@ -345,6 +405,51 @@ def texto_margen(margen):
         return f":orange[Margen previsto: +{margen:.1f} ppm]"
     return f":green[Margen previsto: +{margen:.1f} ppm]"
 
+
+def normalizar_filas_analiticas(df_src, punto_forzado=None):
+    filas = []
+    errores = 0
+
+    for _, row in df_src.iterrows():
+        try:
+            ts = pd.to_datetime(row.get("ts"), errors="coerce")
+            if pd.isna(ts):
+                continue
+
+            punto = punto_forzado if punto_forzado is not None else row.get("punto")
+            if pd.isna(punto) or punto is None:
+                continue
+
+            def to_num(v):
+                if v is None or pd.isna(v):
+                    return None
+                return float(v)
+
+            filas.append((
+                ts.to_pydatetime(),
+                str(punto),
+                to_num(row.get("HC")),
+                to_num(row.get("SS")),
+                to_num(row.get("DQO")),
+                to_num(row.get("Sulf")),
+            ))
+        except Exception:
+            errores += 1
+
+    return filas, errores
+
+
+def ultima_muestra_para_estado(df_punto, columnas=("HC", "DQO")):
+    if df_punto.empty:
+        return None
+
+    df_ord = df_punto.sort_values("ts")
+    df_util = df_ord.dropna(subset=list(columnas), how="all")
+    if not df_util.empty:
+        return df_util.iloc[-1]
+    return df_ord.iloc[-1]
+
+
 @st.cache_data(show_spinner=False)
 def calcular_eficiencias_diarias(df, parametro):
     """
@@ -360,7 +465,7 @@ def calcular_eficiencias_diarias(df, parametro):
         fila = {"dia": dia}
 
         valores = {}
-        for punto in ["Entrada Planta", "X-507", "Salida FCA"]:
+        for punto in PUNTOS_BP:
             df_p = g[g["punto"] == punto]
             if not df_p.empty:
                 valores[punto] = df_p.sort_values("ts").iloc[-1][parametro]
@@ -539,6 +644,10 @@ with tab_dashboard:
                     dias_transcurridos = len(df_anual)
                     dias_totales = 365
                     dias_restantes = max(dias_totales - dias_transcurridos, 0)
+                    upa_hc = None
+                    upa_dqo = None
+                    est_hc_eff = None
+                    est_dqo_eff = None
                 
                     if dias_transcurridos == 0:
                         st.info("No hay suficientes datos para calcular la UPA.")
@@ -578,27 +687,26 @@ with tab_dashboard:
                         # 💾 Guardar estimados UPA (Postgres)
                         # -------------------------------------------------
                         if st.button("💾 Guardar estimados UPA"):
-                            ejecutar_sql(
+                            ejecutar_sql_many(
                                 """
                                 INSERT INTO estimados_upa (anio, parametro, valor)
                                 VALUES (%s, %s, %s)
                                 ON CONFLICT (anio, parametro)
                                 DO UPDATE SET valor = EXCLUDED.valor
                                 """,
-                                (anio, "HC", float(est_hc))
-                            )
-                
-                            ejecutar_sql(
-                                """
-                                INSERT INTO estimados_upa (anio, parametro, valor)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (anio, parametro)
-                                DO UPDATE SET valor = EXCLUDED.valor
-                                """,
-                                (anio, "DQO", float(est_dqo))
+                                [
+                                    (anio, "HC", float(est_hc)),
+                                    (anio, "DQO", float(est_dqo)),
+                                ],
                             )
                 
                             st.success("✅ Estimados UPA guardados correctamente")
+                            recargar_datos(
+                                recargar_analiticas=False,
+                                recargar_envio=False,
+                                recargar_estimados=True,
+                            )
+                            st.rerun()
                 
                         # -------------------------------------------------
                         # 🔢 CÁLCULO ÚNICO DE UPA (FUENTE DE VERDAD)
@@ -675,33 +783,50 @@ with tab_dashboard:
 
                 df_val["mes"] = df_val["dia"].apply(lambda d: d.month)
 
-                prom_mensual = (
+                stats_mensual = (
                     df_val.groupby("mes")[parametro]
-                    .mean()
+                    .agg(["mean", "count", "sum"])
                     .reindex(range(1, 13))
                 )
 
-                prom_acum = prom_mensual.expanding().mean()
+                prom_mensual = stats_mensual["mean"]
+                conteos = stats_mensual["count"]
+                sumas = stats_mensual["sum"]
 
-                # --------- PROYECCIÓN UPA PROGRESIVA (ALINEADA CON UPA NUMÉRICA) ---------
+                prom_acum = sumas.cumsum() / conteos.cumsum()
+
+                # --------- PROYECCIÓN UPA (CON TENDENCIA MENSUAL) ---------
                 proy = prom_acum.copy()
-                
-                meses_reales = prom_mensual.dropna()
-                
-                if not meses_reales.empty:
+
+                est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
+                meses_reales = conteos.dropna()
+
+                if not meses_reales.empty and est_eff is not None:
                     ultimo_mes = meses_reales.index.max()
-                
-                    # 🔑 MISMO estimado efectivo que el bloque UPA
-                    est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
-                
-                    # Suma y número de meses reales
-                    suma_real = meses_reales.sum()
-                    n_real = len(meses_reales)
-                
-                    for m in range(ultimo_mes + 1, 13):
-                        suma_real += est_eff
-                        n_real += 1
-                        proy.loc[m] = suma_real / n_real
+                    hoy = date.today()
+                    anio_actual = hoy.year
+                    mes_actual = hoy.month
+
+                    suma_acum = 0.0
+                    conteo_acum = 0
+                    for m in range(1, 13):
+                        suma_real = sumas.loc[m] if pd.notna(sumas.loc[m]) else 0.0
+                        conteo_real = int(conteos.loc[m]) if pd.notna(conteos.loc[m]) else 0
+                        dias_mes = calendar.monthrange(anio_actual, m)[1]
+
+                        if m < mes_actual:
+                            suma_acum += suma_real
+                            conteo_acum += conteo_real
+                        elif m == mes_actual:
+                            dias_restantes_mes = max(dias_mes - conteo_real, 0)
+                            suma_acum += suma_real + (dias_restantes_mes * est_eff)
+                            conteo_acum += conteo_real + dias_restantes_mes
+                        else:
+                            suma_acum += dias_mes * est_eff
+                            conteo_acum += dias_mes
+
+                        if m >= ultimo_mes and conteo_acum > 0:
+                            proy.loc[m] = suma_acum / conteo_acum
                 
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
@@ -760,18 +885,31 @@ with tab_dashboard:
         # Aplicar lógica de analítica válida por día
         df_val = analitica_valida_salida_fca(df_salida)
         df_val = df_val.sort_values("ts")
+        df_pluviales = df[df["punto"] == "Pluviales"].sort_values("ts")
     
         ultima = df_val.iloc[-1]
+        ultima_pluv = ultima_muestra_para_estado(df_pluviales, ("HC", "DQO"))
     
         fecha_txt = ultima["ts"].strftime("%d/%m/%Y %H:%M")
+        fecha_txt_pluv = (
+            ultima_pluv["ts"].strftime("%d/%m/%Y %H:%M")
+            if ultima_pluv is not None else "Sin dato"
+        )
     
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("HC", ultima["HC"])
-        c2.metric("DQO", ultima["DQO"])
-        c3.metric("SS", ultima["SS"])
-        c4.metric("Sulf", ultima["Sulf"])
+        c1.metric("HC (Salida FCA)", ultima["HC"])
+        c2.metric("DQO (Salida FCA)", ultima["DQO"])
+        c3.metric(
+            "HC (Pluviales)",
+            ultima_pluv["HC"] if ultima_pluv is not None else "—"
+        )
+        c4.metric(
+            "DQO (Pluviales)",
+            ultima_pluv["DQO"] if ultima_pluv is not None else "—"
+        )
     
         st.caption(f"📅 Último análisis disponible: **{fecha_txt}**")
+        st.caption(f"🌧️ Último análisis pluviales: **{fecha_txt_pluv}**")
     
         estado = estado_global(ultima["HC"], ultima["DQO"])
     
@@ -781,6 +919,20 @@ with tab_dashboard:
             st.warning(f"Estado global: {estado}")
         else:
             st.success(f"Estado global: {estado}")
+
+        if ultima_pluv is not None:
+            estado_pluv = estado_global_pluviales(
+                ultima_pluv["HC"],
+                ultima_pluv["DQO"],
+            )
+            if estado_pluv.startswith("🔴"):
+                st.error(f"Estado global pluviales: {estado_pluv}")
+            elif estado_pluv.startswith("🟠"):
+                st.warning(f"Estado global pluviales: {estado_pluv}")
+            else:
+                st.success(f"Estado global pluviales: {estado_pluv}")
+        else:
+            st.info("Estado global pluviales: ⚪ Sin dato")
 
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Análisis gráfico")
@@ -811,7 +963,7 @@ with tab_dashboard:
     
     punto_sel = c1.selectbox(
         "Punto",
-        ["Entrada Planta", "X-507", "Salida FCA", "Comparativo"],
+        ["Entrada Planta", "X-507", "Salida FCA", "Pluviales", "Comparativo"],
         index=2,  # Salida FCA por defecto
         key="graf_punto"
     )
@@ -871,6 +1023,7 @@ with tab_dashboard:
                 "Entrada Planta": "blue",
                 "X-507": "orange",
                 "Salida FCA": "green",
+                "Pluviales": "purple",
             }
     
             for p in PUNTOS:
@@ -944,7 +1097,15 @@ with tab_dashboard:
         # -------------------------------------------------
         # Límites legales
         # -------------------------------------------------
-        if param_sel in LIMITES:
+        if punto_sel == "Pluviales" and param_sel in LIMITES_PLUVIALES:
+            fig.add_hline(
+                y=LIMITES_PLUVIALES[param_sel],
+                line_dash="dash",
+                line_color="red",
+                annotation_text="Límite pluviales",
+                annotation_position="top left"
+            )
+        elif param_sel in LIMITES:
             fig.add_hline(
                 y=LIMITES[param_sel]["anual"],
                 line_dash="dash",
@@ -988,6 +1149,7 @@ with tab_dashboard:
     df_eff = calcular_eficiencias_diarias(df_plot, param_sel)
     
     if not df_eff.empty:
+        df_eff = df_eff.sort_values("dia")
     
         fig_eff = go.Figure()
     
@@ -1072,97 +1234,49 @@ with tab_dashboard:
     # -------------------------------------------------
     # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
     # -------------------------------------------------
-    st.markdown(f"### 🧠 Diagnóstico automático – {param_sel}")
+    st.markdown("### 🧠 Diagnóstico automático – HC y DQO")
     
-    def diagnostico_filtros_fca(df_plot, parametro):
-        """
-        Diagnóstico automático de filtros FCA
-        Basado en tendencia reciente (EMA7) y eficiencia real
-        """
-    
-        resultado = {
-            "estado": "🟢 Normal",
-            "mensaje": "Funcionamiento dentro de parámetros normales.",
-            "motivos": []
-        }
-    
-        if parametro not in ["HC", "DQO"]:
-            return resultado
-    
-        # ---------- SALIDA FCA ----------
-        df_salida = df_plot[df_plot["punto"] == "Salida FCA"].copy()
-        if df_salida.empty or len(df_salida) < 7:
-            return resultado
-    
-        df_salida = analitica_valida_salida_fca(df_salida)
-        df_salida = df_salida.sort_values("ts")
-    
-        # ---------- EMA 7 ----------
-        df_salida["EMA7"] = df_salida[parametro].ewm(span=7, adjust=False).mean()
-        ema_diff = df_salida["EMA7"].diff().dropna()
-    
-        ema_diff_reciente = ema_diff.tail(5)
-        subidas_recientes = (ema_diff_reciente > 0).sum()
-    
-        # ---------- EFICIENCIA ----------
-        df_eff = calcular_eficiencias_diarias(df_plot, parametro)
-        eff_reciente = df_eff["E_X507_Salida"].dropna().tail(5)
-    
-        eff_media = eff_reciente.mean() if not eff_reciente.empty else None
-        eff_tendencia = eff_reciente.diff().mean() if len(eff_reciente) > 1 else 0
-    
-        # ---------- ENTRADA ESTABLE ----------
-        df_ent = df_plot[df_plot["punto"] == "Entrada Planta"]
-        entrada_estable = True
-        if not df_ent.empty:
-            ent_vals = df_ent.sort_values("ts")[parametro].tail(5)
-            if ent_vals.max() - ent_vals.min() > ent_vals.mean() * 0.2:
-                entrada_estable = False
-    
-        # ---------- LÓGICA FINAL ----------
-        if (
-            subidas_recientes >= 3 and
-            eff_media is not None and eff_media < 60 and
-            eff_tendencia < 0 and
-            entrada_estable
-        ):
-            resultado["estado"] = "🔴 Posible limpieza de filtros"
-            resultado["mensaje"] = "Deriva negativa sostenida en salida FCA."
-            resultado["motivos"] = [
-                "Tendencia reciente ascendente en salida FCA (EMA 7)",
-                "Eficiencia en descenso en etapa X-507 → Salida FCA",
-                "Entrada estable"
-            ]
-    
-        elif subidas_recientes >= 2 and eff_tendencia < 0:
-            resultado["estado"] = "🟠 Vigilancia"
-            resultado["mensaje"] = "Se detectan señales tempranas de desviación."
-            resultado["motivos"] = [
-                "Tendencia reciente al alza",
-                "Ligera caída de eficiencia"
-            ]
-    
-        return resultado
-
     # -------------------------------------------------
     # 🧠 MOSTRAR RESULTADO DEL DIAGNÓSTICO
     # -------------------------------------------------
-    diag = diagnostico_filtros_fca(df_plot, param_sel)
-    
-    if diag is None:
-        st.info("No hay datos suficientes para el diagnóstico automático.")
-    else:
-        if diag["estado"].startswith("🔴"):
-            st.error(f"{diag['estado']}\n\n{diag['mensaje']}")
-        elif diag["estado"].startswith("🟠"):
-            st.warning(f"{diag['estado']}\n\n{diag['mensaje']}")
+    diag_hc = diagnostico_filtros_fca(df_plot, "HC")
+    diag_dqo = diagnostico_filtros_fca(df_plot, "DQO")
+
+    col_diag_hc, col_diag_dqo = st.columns(2)
+
+    with col_diag_hc:
+        st.markdown("**HC**")
+        if diag_hc is None:
+            st.info("No hay datos suficientes para el diagnóstico automático.")
         else:
-            st.success(f"{diag['estado']}\n\n{diag['mensaje']}")
-    
-        if diag.get("motivos"):
-            st.markdown("**Motivos detectados:**")
-            for m in diag["motivos"]:
-                st.markdown(f"- {m}")
+            if diag_hc["estado"].startswith("🔴"):
+                st.error(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+            elif diag_hc["estado"].startswith("🟠"):
+                st.warning(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+            else:
+                st.success(f"{diag_hc['estado']}\n\n{diag_hc['mensaje']}")
+
+            if diag_hc.get("motivos"):
+                st.markdown("**Motivos detectados:**")
+                for m in diag_hc["motivos"]:
+                    st.markdown(f"- {m}")
+
+    with col_diag_dqo:
+        st.markdown("**DQO**")
+        if diag_dqo is None:
+            st.info("No hay datos suficientes para el diagnóstico automático.")
+        else:
+            if diag_dqo["estado"].startswith("🔴"):
+                st.error(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+            elif diag_dqo["estado"].startswith("🟠"):
+                st.warning(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+            else:
+                st.success(f"{diag_dqo['estado']}\n\n{diag_dqo['mensaje']}")
+
+            if diag_dqo.get("motivos"):
+                st.markdown("**Motivos detectados:**")
+                for m in diag_dqo["motivos"]:
+                    st.markdown(f"- {m}")
 
 # =====================================================
 # 🛠️ GESTIÓN DE DATOS
@@ -1202,46 +1316,113 @@ with tab_gestion:
             )
         
             st.success("Analítica guardada correctamente")
+            recargar_datos(
+                recargar_analiticas=True,
+                recargar_envio=True,
+                recargar_estimados=False,
+            )
+            st.rerun()
             ()
         
     # ---------- TABLA EDITABLE ----------
     with st.expander("📊 Tabla de analíticas"):
-        if not df.empty:
-            df_edit = st.data_editor(
-                df.drop(columns=["dia"]),
+        df_bp = df[df["punto"].isin(PUNTOS_BP)].copy()
+        df_pluv_tab = df[df["punto"] == "Pluviales"].copy()
+
+        st.markdown("#### Planta BP")
+        if not df_bp.empty:
+            df_edit_bp = st.data_editor(
+                df_bp.drop(columns=["dia"]),
                 use_container_width=True,
                 hide_index=True,
+                key="tabla_bp_editor",
             )
-    
-            if st.button("Guardar cambios en tabla"):
-                # Vaciar tabla
-                ejecutar_sql("DELETE FROM analiticas")
-    
-                # Reinsertar fila a fila (persistencia garantizada)
-                for _, row in df_edit.iterrows():
-                    ejecutar_sql(
-                        """
-                        INSERT INTO analiticas
-                        (ts, punto, HC, SS, DQO, Sulf)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            row["ts"],
-                            row["punto"],
-                            row["HC"],
-                            row["SS"],
-                            row["DQO"],
-                            row["Sulf"],
-                        ),
+
+            if st.button("Guardar Planta BP"):
+                ejecutar_sql(
+                    "DELETE FROM analiticas WHERE punto <> 'Pluviales'"
+                )
+
+                filas_bp = [
+                    (
+                        row["ts"],
+                        row["punto"],
+                        row["HC"],
+                        row["SS"],
+                        row["DQO"],
+                        row["Sulf"],
                     )
-    
-                st.success("Tabla actualizada correctamente")
+                    for _, row in df_edit_bp.iterrows()
+                ]
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO analiticas
+                    (ts, punto, HC, SS, DQO, Sulf)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    filas_bp,
+                )
+
+                st.success("Tabla Planta BP actualizada correctamente")
+                recargar_datos(
+                    recargar_analiticas=True,
+                    recargar_envio=True,
+                    recargar_estimados=False,
+                )
+                st.rerun()
+        else:
+            st.info("No hay datos de Planta BP en la tabla.")
+
+        st.markdown("#### Pluviales")
+        if not df_pluv_tab.empty:
+            df_edit_pluv = st.data_editor(
+                df_pluv_tab.drop(columns=["dia"]),
+                use_container_width=True,
+                hide_index=True,
+                key="tabla_pluviales_editor",
+            )
+        else:
+            df_edit_pluv = st.data_editor(
+                pd.DataFrame(columns=["id", "ts", "punto", "HC", "SS", "DQO", "Sulf"]),
+                use_container_width=True,
+                hide_index=True,
+                key="tabla_pluviales_editor",
+            )
+
+        if st.button("Guardar Pluviales"):
+            ejecutar_sql(
+                "DELETE FROM analiticas WHERE punto = 'Pluviales'"
+            )
+
+            filas_pluv, errores_pluv = normalizar_filas_analiticas(
+                df_edit_pluv,
+                punto_forzado="Pluviales",
+            )
+            ejecutar_sql_many(
+                """
+                INSERT INTO analiticas
+                (ts, punto, HC, SS, DQO, Sulf)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                filas_pluv,
+            )
+
+            st.success(f"Tabla Pluviales actualizada correctamente ({len(filas_pluv)} filas)")
+            if errores_pluv > 0:
+                st.warning(f"⚠️ Filas de pluviales con error: {errores_pluv}")
+            recargar_datos(
+                recargar_analiticas=True,
+                recargar_envio=False,
+                recargar_estimados=False,
+            )
+            st.rerun()
     
     
     # ---------- ENVÍO A EMISARIO ----------
     with st.expander("📅 Envío a emisario"):
-        if not df.empty:
-            dias = df[["dia"]].drop_duplicates().sort_values("dia")
+        df_bp = df[df["punto"].isin(PUNTOS_BP)]
+        if not df_bp.empty:
+            dias = df_bp[["dia"]].drop_duplicates().sort_values("dia")
     
             tabla_env = dias.merge(
                 df_envio, on="dia", how="left"
@@ -1256,25 +1437,28 @@ with tab_gestion:
             if st.button("💾 Guardar envío a emisario"):
                 ejecutar_sql("DELETE FROM envio_emisario")
             
-                conn = get_conn()
-                try:
-                    with conn.cursor() as cur:
-                        for _, r in tabla_edit.iterrows():
-                            cur.execute(
-                                """
-                                INSERT INTO envio_emisario (dia, envio_emisario)
-                                VALUES (%s, %s)
-                                """,
-                                (
-                                    r["dia"],
-                                    bool(r["envio_emisario"])
-                                )
-                            )
-                    conn.commit()
-                finally:
-                    conn.close()
+                filas_envio = [
+                    (
+                        r["dia"],
+                        int(bool(r["envio_emisario"])),
+                    )
+                    for _, r in tabla_edit.iterrows()
+                ]
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO envio_emisario (dia, envio_emisario)
+                    VALUES (%s, %s)
+                    """,
+                    filas_envio,
+                )
             
                 st.success("Envío a emisario actualizado")
+                recargar_datos(
+                    recargar_analiticas=False,
+                    recargar_envio=True,
+                    recargar_estimados=False,
+                )
+                st.rerun()
                 ()
             
     # ---------- COPIA DE SEGURIDAD BBDD ----------
@@ -1326,11 +1510,15 @@ with tab_gestion:
                 "Salida FCA": st.file_uploader(
                     "📄 salidafca.xlsx", type=["xlsx"], key="xlsx_fca"
                 ),
+                "Pluviales": st.file_uploader(
+                    "📄 pluviales.xlsx", type=["xlsx"], key="xlsx_pluviales"
+                ),
             }
         
             if st.button("🚀 Importar datos XLSX"):
                 total_insertados = 0
                 errores = 0
+                filas_insert = []
         
                 for punto, archivo in archivos.items():
                     if archivo is None:
@@ -1360,17 +1548,7 @@ with tab_gestion:
                                 datetime.strptime("12:00", "%H:%M").time()
                             )
         
-                            ejecutar_sql(
-                                """
-                                INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (ts, punto)
-                                DO UPDATE SET
-                                    hc = EXCLUDED.hc,
-                                    ss = EXCLUDED.ss,
-                                    dqo = EXCLUDED.dqo,
-                                    sulf = EXCLUDED.sulf
-                                """,
+                            filas_insert.append(
                                 (
                                     ts,
                                     punto,
@@ -1380,11 +1558,24 @@ with tab_gestion:
                                     None if pd.isna(r["Sulf"]) else float(r["Sulf"]),
                                 )
                             )
-        
                             total_insertados += 1
         
                         except Exception:
                             errores += 1
+
+                ejecutar_sql_many(
+                    """
+                    INSERT INTO analiticas (ts, punto, hc, ss, dqo, sulf)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ts, punto)
+                    DO UPDATE SET
+                        hc = EXCLUDED.hc,
+                        ss = EXCLUDED.ss,
+                        dqo = EXCLUDED.dqo,
+                        sulf = EXCLUDED.sulf
+                    """,
+                    filas_insert,
+                )
         
                 if total_insertados > 0:
                     st.success(f"✅ Importación completada: {total_insertados} filas insertadas")
@@ -1395,6 +1586,13 @@ with tab_gestion:
                     st.warning(f"⚠️ Filas con error: {errores}")
         
                 ()
+                if total_insertados > 0:
+                    recargar_datos(
+                        recargar_analiticas=True,
+                        recargar_envio=True,
+                        recargar_estimados=False,
+                    )
+                    st.rerun()
 
         # =====================================================
         # 📥 IMPORTAR ENVÍO A EMISARIO DESDE EXCEL
@@ -1428,6 +1626,7 @@ with tab_gestion:
                 else:
                     insertados = 0
                     errores = 0
+                    filas_envio = []
         
                     try:
                         df_env = pd.read_excel(
@@ -1458,20 +1657,21 @@ with tab_gestion:
                                 else:
                                     envio = 1 if int(val) == 1 else 0
         
-                                ejecutar_sql(
-                                    """
-                                    INSERT INTO envio_emisario (dia, envio_emisario)
-                                    VALUES (%s, %s)
-                                    ON CONFLICT (dia)
-                                    DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
-                                    """,
-                                    (dia, envio)
-                                )
-        
+                                filas_envio.append((dia, envio))
                                 insertados += 1
         
                             except Exception:
                                 errores += 1
+
+                        ejecutar_sql_many(
+                            """
+                            INSERT INTO envio_emisario (dia, envio_emisario)
+                            VALUES (%s, %s)
+                            ON CONFLICT (dia)
+                            DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
+                            """,
+                            filas_envio,
+                        )
         
                         if insertados > 0:
                             st.success(f"✅ Envío a emisario importado: {insertados} días")
@@ -1482,6 +1682,13 @@ with tab_gestion:
                             st.warning(f"⚠️ Filas con error: {errores}")
         
                         ()
+                        if insertados > 0:
+                            recargar_datos(
+                                recargar_analiticas=False,
+                                recargar_envio=True,
+                                recargar_estimados=False,
+                            )
+                            st.rerun()
         
         # -------------------------------------------------
         # 📤 EXPORTAR DATOS (CSV)
@@ -1535,4 +1742,3 @@ with tab_gestion:
 
 st.sidebar.markdown("### 🧪 Diagnóstico DB")
 st.sidebar.write("Existe DB:", os.path.exists(DB_PATH))
-
