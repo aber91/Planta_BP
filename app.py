@@ -1704,17 +1704,29 @@ with tab_gestion:
                     except Exception as e:
                         st.error(f"❌ Error leyendo el archivo: {e}")
                     else:
-                        for _, r in df_caudal_xls.iterrows():
-                            try:
-                                if pd.isna(r["ts"]) or pd.isna(r["caudal_m3h"]):
-                                    continue
-                                ts = pd.to_datetime(r["ts"], errors="coerce")
-                                if pd.isna(ts):
-                                    continue
-                                caudal = float(r["caudal_m3h"])
-                                filas_caudal.append((ts.to_pydatetime(), caudal))
-                            except Exception:
-                                errores += 1
+                        # Normalización vectorizada (más rápida y robusta para ficheros horarios grandes)
+                        total_filas = len(df_caudal_xls)
+
+                        df_caudal_xls["ts"] = pd.to_datetime(
+                            df_caudal_xls["ts"],
+                            errors="coerce"
+                        )
+                        df_caudal_xls["caudal_m3h"] = pd.to_numeric(
+                            df_caudal_xls["caudal_m3h"],
+                            errors="coerce"
+                        )
+
+                        df_caudal_xls = df_caudal_xls.dropna(subset=["ts", "caudal_m3h"])
+                        errores = total_filas - len(df_caudal_xls)
+
+                        if not df_caudal_xls.empty:
+                            df_caudal_xls = df_caudal_xls.sort_values("ts")
+                            filas_caudal = list(
+                                zip(
+                                    df_caudal_xls["ts"].dt.to_pydatetime(),
+                                    df_caudal_xls["caudal_m3h"].astype(float)
+                                )
+                            )
 
                         ejecutar_sql_many(
                             """
