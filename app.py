@@ -22,6 +22,9 @@ if "df_envio" not in st.session_state:
 if "df_est" not in st.session_state:
     st.session_state.df_est = None
 
+if "df_caudal" not in st.session_state:
+    st.session_state.df_caudal = None
+
 # =====================================================
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
@@ -188,6 +191,13 @@ def init_db():
     """)
 
     ejecutar_sql("""
+    CREATE TABLE IF NOT EXISTS caudal_emisario (
+        ts TIMESTAMP PRIMARY KEY,
+        caudal_m3h DOUBLE PRECISION NOT NULL
+    );
+    """)
+
+    ejecutar_sql("""
     CREATE TABLE IF NOT EXISTS estimados_upa (
         anio INTEGER NOT NULL,
         parametro TEXT NOT NULL,
@@ -269,6 +279,25 @@ def cargar_envio_emisario():
 
     return df_envio_tmp
 
+
+def cargar_caudal_emisario():
+    df_caudal_tmp = cargar_tabla("""
+        SELECT
+            ts,
+            caudal_m3h
+        FROM caudal_emisario
+        ORDER BY ts
+    """)
+
+    if not df_caudal_tmp.empty:
+        df_caudal_tmp["ts"] = pd.to_datetime(df_caudal_tmp["ts"], errors="coerce")
+        df_caudal_tmp = df_caudal_tmp.dropna(subset=["ts"])
+        df_caudal_tmp["dia"] = df_caudal_tmp["ts"].dt.date
+    else:
+        df_caudal_tmp = pd.DataFrame(columns=["ts", "caudal_m3h", "dia"])
+
+    return df_caudal_tmp
+
 def cargar_estimados(anio_actual):
     return cargar_tabla(
         """
@@ -282,13 +311,15 @@ def cargar_estimados(anio_actual):
         (anio_actual,)
     )
 
-def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estimados=True):
+def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estimados=True, recargar_caudal=True):
     if recargar_analiticas:
         st.session_state.df = cargar_analiticas()
     if recargar_envio:
         st.session_state.df_envio = cargar_envio_emisario()
     if recargar_estimados:
         st.session_state.df_est = cargar_estimados(anio)
+    if recargar_caudal:
+        st.session_state.df_caudal = cargar_caudal_emisario()
 
 
 # ---------- ANALÍTICAS ----------
@@ -299,12 +330,15 @@ def cargar_datos_iniciales():
         st.session_state.df_envio = cargar_envio_emisario()
     if st.session_state.df_est is None:
         st.session_state.df_est = cargar_estimados(anio)
+    if st.session_state.df_caudal is None:
+        st.session_state.df_caudal = cargar_caudal_emisario()
 
 
 cargar_datos_iniciales()
 
 df = st.session_state.df.copy()
 df_envio = st.session_state.df_envio.copy()
+df_caudal = st.session_state.df_caudal.copy()
 
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
@@ -657,6 +691,16 @@ with tab_dashboard:
                     st.markdown("**DQO (ppm)**")
                     st.metric("Mes actual", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
                     st.metric("Año acumulado", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
+
+                    df_caudal_anual = df_caudal[df_caudal["dia"].apply(lambda d: d.year) == anio] if not df_caudal.empty else pd.DataFrame()
+                    df_caudal_mes = df_caudal_anual[df_caudal_anual["dia"].apply(lambda d: d.month) == mes_actual] if not df_caudal_anual.empty else pd.DataFrame()
+
+                    caudal_mes = df_caudal_mes["caudal_m3h"].sum() if not df_caudal_mes.empty else 0.0
+                    caudal_anual = df_caudal_anual["caudal_m3h"].sum() if not df_caudal_anual.empty else 0.0
+
+                    st.markdown("**Agua enviada a emisario (m³)**")
+                    st.metric("Mes actual", f"{caudal_mes:.1f} m³")
+                    st.metric("Año acumulado", f"{caudal_anual:.1f} m³")
 
                 # =============================================
                 # 🔮 UPA
@@ -1620,6 +1664,94 @@ with tab_gestion:
                         recargar_estimados=False,
                     )
                     st.rerun()
+
+
+        # =====================================================
+        # 📥 IMPORTAR CAUDAL A EMISARIO DESDE EXCEL
+        # =====================================================
+        with st.expander("📥 Importar caudal enviado a emisario (horario)"):
+
+            st.markdown(
+                """
+                **Formato esperado del archivo XLS/XLSX**
+
+                - Columna A → Fecha y hora  
+                - Columna B → Caudal (m³/h)  
+
+                Regla para actualizar `envio_emisario` por día:  
+                - Se considera envío cuando caudal >= 20 m³/h  
+                - Si horas con envío > 4 => 1  
+                - Si horas con envío <= 4 => 0
+                """
+            )
+
+            archivo_caudal = st.file_uploader(
+                "📄 caudal_emisario.xls / .xlsx",
+                type=["xls", "xlsx"],
+                key="xlsx_caudal_emisario"
+            )
+
+            if st.button("🚀 Importar caudal enviado a emisario"):
+                if archivo_caudal is None:
+                    st.warning("⚠️ Sube primero un archivo XLS/XLSX")
+                else:
+                    filas_caudal = []
+                    errores = 0
+
+                    try:
+                        df_caudal_xls = pd.read_excel(archivo_caudal, usecols="A,B", header=0)
+                        df_caudal_xls.columns = ["ts", "caudal_m3h"]
+                    except Exception as e:
+                        st.error(f"❌ Error leyendo el archivo: {e}")
+                    else:
+                        for _, r in df_caudal_xls.iterrows():
+                            try:
+                                if pd.isna(r["ts"]) or pd.isna(r["caudal_m3h"]):
+                                    continue
+                                ts = pd.to_datetime(r["ts"], errors="coerce")
+                                if pd.isna(ts):
+                                    continue
+                                caudal = float(r["caudal_m3h"])
+                                filas_caudal.append((ts.to_pydatetime(), caudal))
+                            except Exception:
+                                errores += 1
+
+                        ejecutar_sql_many(
+                            """
+                            INSERT INTO caudal_emisario (ts, caudal_m3h)
+                            VALUES (%s, %s)
+                            ON CONFLICT (ts)
+                            DO UPDATE SET caudal_m3h = EXCLUDED.caudal_m3h
+                            """,
+                            filas_caudal,
+                        )
+
+                        df_tmp = pd.DataFrame(filas_caudal, columns=["ts", "caudal_m3h"])
+                        if not df_tmp.empty:
+                            df_tmp["dia"] = pd.to_datetime(df_tmp["ts"]).dt.date
+                            df_day = df_tmp.groupby("dia")["caudal_m3h"].apply(lambda x: int((x >= 20).sum() > 4)).reset_index(name="envio_emisario")
+                            filas_envio_auto = [(r["dia"], int(r["envio_emisario"])) for _, r in df_day.iterrows()]
+                            ejecutar_sql_many(
+                                """
+                                INSERT INTO envio_emisario (dia, envio_emisario)
+                                VALUES (%s, %s)
+                                ON CONFLICT (dia)
+                                DO UPDATE SET envio_emisario = EXCLUDED.envio_emisario
+                                """,
+                                filas_envio_auto,
+                            )
+
+                        st.success(f"✅ Caudal importado: {len(filas_caudal)} horas")
+                        if errores > 0:
+                            st.warning(f"⚠️ Filas con error: {errores}")
+
+                        recargar_datos(
+                            recargar_analiticas=False,
+                            recargar_envio=True,
+                            recargar_estimados=False,
+                            recargar_caudal=True,
+                        )
+                        st.rerun()
 
         # =====================================================
         # 📥 IMPORTAR ENVÍO A EMISARIO DESDE EXCEL
