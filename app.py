@@ -451,20 +451,34 @@ def calcular_upa(valor_actual_medio, n_dias_actuales, estimado, n_dias_restantes
 
     return total_acumulado / (n_dias_actuales + n_dias_restantes)
 
+
+
+def formatear_numero(valor, decimales=2):
+    if valor is None or pd.isna(valor):
+        return "—"
+    s = f"{float(valor):,.{decimales}f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+def formatear_entero(valor):
+    if valor is None or pd.isna(valor):
+        return "—"
+    s = f"{int(round(float(valor))):,}"
+    return s.replace(",", ".")
+
 def valor_con_semaforo(valor, unidad, limite_anual):
     if valor is None or pd.isna(valor):
         return "—"
     sem = semaforo_promedio(valor, limite_anual)
-    return f"{valor:.2f} {unidad} {sem}"
+    return f"{formatear_numero(valor, 2)} {unidad} {sem}"
 
 def texto_margen(margen):
     if margen is None:
         return ""
     if margen < 0:
-        return f":red[Margen previsto: {margen:.1f} ppm]"
+        return f":red[Margen previsto: {formatear_numero(margen, 1)} ppm]"
     if margen < 0.2 * abs(margen):
-        return f":orange[Margen previsto: +{margen:.1f} ppm]"
-    return f":green[Margen previsto: +{margen:.1f} ppm]"
+        return f":orange[Margen previsto: +{formatear_numero(margen, 1)} ppm]"
+    return f":green[Margen previsto: +{formatear_numero(margen, 1)} ppm]"
 
 
 def normalizar_filas_analiticas(df_src, punto_forzado=None):
@@ -699,8 +713,15 @@ with tab_dashboard:
                     caudal_anual = df_caudal_anual["caudal_m3h"].sum() if not df_caudal_anual.empty else 0.0
 
                     st.markdown("**Agua enviada a emisario (m³)**")
-                    st.metric("Mes actual", f"{caudal_mes:.1f} m³")
-                    st.metric("Año acumulado", f"{caudal_anual:.1f} m³")
+                    st.metric("Mes actual", f"{formatear_entero(caudal_mes)} m³")
+                    st.metric("Año acumulado", f"{formatear_entero(caudal_anual)} m³")
+
+                    dqo_t_mes = (dqo_mes * caudal_mes / 1_000_000) if dqo_mes is not None else None
+                    dqo_t_anual = (dqo_anual * caudal_anual / 1_000_000) if dqo_anual is not None else None
+
+                    st.markdown("**DQO enviada (t)**")
+                    st.metric("Mes actual", f"{formatear_entero(dqo_t_mes)} t")
+                    st.metric("Año acumulado", f"{formatear_entero(dqo_t_anual)} t")
 
                 # =============================================
                 # 🔮 UPA
@@ -846,19 +867,37 @@ with tab_dashboard:
 
                 parametro = st.selectbox(
                     "Parámetro",
-                    ["HC", "DQO"],
+                    ["HC", "DQO", "m3 enviados", "DQO enviada (t)"],
                     key="graf_anual_param"
                 )
 
-                limite = LIMITES[parametro]["anual"]
+                limite = None
+                if parametro in LIMITES:
+                    limite = LIMITES[parametro]["anual"]
 
                 df_val["mes"] = df_val["dia"].apply(lambda d: d.month)
+                df_caudal_calc = df_caudal.copy() if not df_caudal.empty else pd.DataFrame(columns=["dia", "caudal_m3h"])
+                if not df_caudal_calc.empty:
+                    df_caudal_calc["dia"] = pd.to_datetime(df_caudal_calc["dia"])
+                    df_caudal_calc["mes"] = df_caudal_calc["dia"].dt.month
 
-                stats_mensual = (
-                    df_val.groupby("mes")[parametro]
-                    .agg(["mean", "count", "sum"])
-                    .reindex(range(1, 13))
-                )
+                if parametro == "m3 enviados":
+                    stats_mensual = df_caudal_calc.groupby("mes")["caudal_m3h"].sum().reindex(range(1,13)).to_frame("mean")
+                    stats_mensual["count"] = 1
+                    stats_mensual["sum"] = stats_mensual["mean"]
+                elif parametro == "DQO enviada (t)":
+                    dqo_mes_df = df_val.groupby("mes")["DQO"].mean().reindex(range(1,13))
+                    m3_mes_df = df_caudal_calc.groupby("mes")["caudal_m3h"].sum().reindex(range(1,13)) if not df_caudal_calc.empty else pd.Series(index=range(1,13), dtype=float)
+                    dqo_t_mes_df = (dqo_mes_df * m3_mes_df) / 1_000_000
+                    stats_mensual = dqo_t_mes_df.to_frame("mean")
+                    stats_mensual["count"] = 1
+                    stats_mensual["sum"] = stats_mensual["mean"]
+                else:
+                    stats_mensual = (
+                        df_val.groupby("mes")[parametro]
+                        .agg(["mean", "count", "sum"])
+                        .reindex(range(1, 13))
+                    )
 
                 prom_mensual = stats_mensual["mean"]
                 conteos = stats_mensual["count"]
@@ -927,18 +966,19 @@ with tab_dashboard:
                     line=dict(width=3, dash="dash")
                 ))
                 
-                fig.add_hline(
-                    y=limite,
-                    line_dash="dot",
-                    line_color="red",
-                    annotation_text="Límite anual",
-                    annotation_position="top left"
-                )
+                if limite is not None:
+                    fig.add_hline(
+                        y=limite,
+                        line_dash="dot",
+                        line_color="red",
+                        annotation_text="Límite anual",
+                        annotation_position="top left"
+                    )
                 
                 fig.update_layout(
                     height=520,
                     margin=dict(l=20, r=20, t=40, b=20),
-                    yaxis_title="ppm",
+                    yaxis_title="ppm" if parametro in ["HC", "DQO"] else ("m³" if parametro == "m3 enviados" else "t"),
                     legend=dict(orientation="h", y=-0.25)
                 )
                 
@@ -1206,7 +1246,21 @@ with tab_dashboard:
         )
     
         st.plotly_chart(fig, use_container_width=True)
-    
+
+        if punto_sel != "Comparativo" and punto_sel == "Salida FCA" and not df_caudal.empty:
+            st.markdown("#### 🚚 m³ enviados (control diario)")
+            df_c = df_caudal.copy()
+            df_c["dia"] = pd.to_datetime(df_c["dia"])
+            if "dia" in df_plot.columns:
+                dias_filtrados = pd.to_datetime(df_plot["dia"].dropna().unique())
+                df_c = df_c[df_c["dia"].isin(dias_filtrados)]
+            df_c_dia = df_c.groupby("dia")["caudal_m3h"].sum().reset_index()
+            if not df_c_dia.empty:
+                fig_m3 = go.Figure()
+                fig_m3.add_trace(go.Bar(x=df_c_dia["dia"], y=df_c_dia["caudal_m3h"], name="m³ enviados"))
+                fig_m3.update_layout(height=260, margin=dict(l=40, r=40, t=20, b=20), xaxis_title="Fecha", yaxis_title="m³")
+                st.plotly_chart(fig_m3, use_container_width=True)
+
     else:
         st.info("No hay datos para el gráfico")
 
