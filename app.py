@@ -26,17 +26,42 @@ if "df_est" not in st.session_state:
 # CONFIGURACIÓN GENERAL Y PERSISTENCIA (SUPABASE)
 # =====================================================
 
+def _get_db_settings():
+    required_keys = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+    db_settings = {}
+    missing = []
+
+    for key in required_keys:
+        value = st.secrets.get(key) if key in st.secrets else os.getenv(key)
+        if value in (None, ""):
+            missing.append(key)
+        else:
+            db_settings[key] = value
+
+    sslmode = st.secrets.get("DB_SSLMODE") if "DB_SSLMODE" in st.secrets else os.getenv("DB_SSLMODE", "require")
+    db_settings["DB_SSLMODE"] = sslmode
+
+    if missing:
+        raise RuntimeError(
+            "Faltan credenciales de base de datos: " + ", ".join(missing) +
+            ". Configúralas en Streamlit secrets o variables de entorno."
+        )
+
+    return db_settings
+
+
 @st.cache_resource
 def get_pool():
+    db = _get_db_settings()
     return SimpleConnectionPool(
         minconn=1,
         maxconn=5,
-        host=st.secrets["DB_HOST"],
-        port=st.secrets["DB_PORT"],
-        dbname=st.secrets["DB_NAME"],
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        sslmode=st.secrets["DB_SSLMODE"],
+        host=db["DB_HOST"],
+        port=db["DB_PORT"],
+        dbname=db["DB_NAME"],
+        user=db["DB_USER"],
+        password=db["DB_PASSWORD"],
+        sslmode=db["DB_SSLMODE"],
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
@@ -93,6 +118,8 @@ if ok_db:
 else:
     st.sidebar.error("🔴 Error de conexión a Neon")
     st.sidebar.code(db_error)
+    st.error("No se pudo iniciar la app porque faltan o son inválidas las credenciales de base de datos.")
+    st.stop()
 
 # =====================================================
 # RUTA ÚNICA DE BASE DE DATOS SQLITE
