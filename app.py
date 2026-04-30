@@ -673,190 +673,169 @@ with tab_dashboard:
             mes_actual = hoy.month
 
             # =================================================
-            # LAYOUT PRINCIPAL (IZQ + DERECHA)
+            # NUEVA ESTRUCTURA VISUAL DEL DASHBOARD
+            # 1) Resumen ejecutivo (KPIs)
+            # 2) Evolución anual (izq) + UPA (dcha)
+            # 3) Detalle de acumulados
             # =================================================
-            col_left, col_graph = st.columns([1, 1])
+            st.markdown("#### 🧭 Resumen ejecutivo")
 
-            # =================================================
-            # 🟦 COLUMNA IZQUIERDA (2 SUBCOLUMNAS)
-            # =================================================
-            with col_left:
-                col_acc, col_upa = st.columns([1, 1])
+            df_anual = df_val[df_val["dia"].apply(lambda d: d.year) == anio]
+            df_mes = df_anual[df_anual["dia"].apply(lambda d: d.month) == mes_actual]
 
-                # =============================================
-                # 📐 ACUMULADOS
-                # =============================================
-                with col_acc:
-                    st.markdown("### 📐 Acumulados")
-                    st.caption("Salida FCA · días con envío a emisario")
+            hc_mes = df_mes["HC"].mean() if not df_mes.empty else None
+            dqo_mes = df_mes["DQO"].mean() if not df_mes.empty else None
+            hc_anual = df_anual["HC"].mean() if not df_anual.empty else None
+            dqo_anual = df_anual["DQO"].mean() if not df_anual.empty else None
 
-                    df_anual = df_val[df_val["dia"].apply(lambda d: d.year) == anio]
-                    df_mes = df_anual[df_anual["dia"].apply(lambda d: d.month) == mes_actual]
+            df_caudal_anual = df_caudal[df_caudal["dia"].apply(lambda d: d.year) == anio] if not df_caudal.empty else pd.DataFrame()
+            df_caudal_mes = df_caudal_anual[df_caudal_anual["dia"].apply(lambda d: d.month) == mes_actual] if not df_caudal_anual.empty else pd.DataFrame()
 
-                    hc_mes = df_mes["HC"].mean() if not df_mes.empty else None
-                    dqo_mes = df_mes["DQO"].mean() if not df_mes.empty else None
-                    hc_anual = df_anual["HC"].mean() if not df_anual.empty else None
-                    dqo_anual = df_anual["DQO"].mean() if not df_anual.empty else None
+            caudal_mes = df_caudal_mes["caudal_m3h"].sum() if not df_caudal_mes.empty else 0.0
+            caudal_anual = df_caudal_anual["caudal_m3h"].sum() if not df_caudal_anual.empty else 0.0
 
-                    st.markdown("**HC (ppm)**")
-                    st.metric("Mes actual", valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"]))
-                    st.metric("Año acumulado", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
+            dqo_t_mes = (dqo_mes * caudal_mes / 1_000_000) if dqo_mes is not None else None
+            dqo_t_anual = (dqo_anual * caudal_anual / 1_000_000) if dqo_anual is not None else None
 
-                    st.markdown("**DQO (ppm)**")
-                    st.metric("Mes actual", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
-                    st.metric("Año acumulado", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("HC mes (ppm)", valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"]))
+            k2.metric("DQO mes (ppm)", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
+            k3.metric("m³ enviados mes", f"{formatear_entero(caudal_mes)} m³")
+            k4.metric("DQO enviada mes", f"{formatear_entero(dqo_t_mes)} t")
 
-                    df_caudal_anual = df_caudal[df_caudal["dia"].apply(lambda d: d.year) == anio] if not df_caudal.empty else pd.DataFrame()
-                    df_caudal_mes = df_caudal_anual[df_caudal_anual["dia"].apply(lambda d: d.month) == mes_actual] if not df_caudal_anual.empty else pd.DataFrame()
+            col_graph, col_upa = st.columns([1.6, 1])
 
-                    caudal_mes = df_caudal_mes["caudal_m3h"].sum() if not df_caudal_mes.empty else 0.0
-                    caudal_anual = df_caudal_anual["caudal_m3h"].sum() if not df_caudal_anual.empty else 0.0
-
-                    st.markdown("**Agua enviada a emisario (m³)**")
-                    st.metric("Mes actual", f"{formatear_entero(caudal_mes)} m³")
-                    st.metric("Año acumulado", f"{formatear_entero(caudal_anual)} m³")
-
-                    dqo_t_mes = (dqo_mes * caudal_mes / 1_000_000) if dqo_mes is not None else None
-                    dqo_t_anual = (dqo_anual * caudal_anual / 1_000_000) if dqo_anual is not None else None
-
-                    st.markdown("**DQO enviada (t)**")
-                    st.metric("Mes actual", f"{formatear_entero(dqo_t_mes)} t")
-                    st.metric("Año acumulado", f"{formatear_entero(dqo_t_anual)} t")
-
-                # =============================================
-                # 🔮 UPA
-                # =============================================
-                with col_upa:
-                    st.markdown("### 🔮 UPA")
-                    st.caption("Última previsión anual · valores persistentes")
+            with col_upa:
+                st.markdown("### 🔮 UPA")
+                st.caption("Última previsión anual · valores persistentes")
+                
+                # -------------------------------------------------
+                # Días reales considerados
+                # -------------------------------------------------
+                dias_transcurridos = len(df_anual)
+                dias_totales = 365
+                dias_restantes = max(dias_totales - dias_transcurridos, 0)
+                upa_hc = None
+                upa_dqo = None
+                est_hc_eff = None
+                est_dqo_eff = None
+                
+                if dias_transcurridos == 0:
+                    st.info("No hay suficientes datos para calcular la UPA.")
+                else:
+                    # -------------------------------------------------
+                    # Cargar estimados persistentes (BBDD)
+                    # -------------------------------------------------
+                    est_hc_guardado = get_estimado("HC")
+                    est_dqo_guardado = get_estimado("DQO")
+                
+                    if est_hc_guardado is None:
+                        est_hc_guardado = float(hc_anual) if hc_anual else 0.0
+                
+                    if est_dqo_guardado is None:
+                        est_dqo_guardado = float(dqo_anual) if dqo_anual else 0.0
                 
                     # -------------------------------------------------
-                    # Días reales considerados
+                    # Inputs editables (NO guardan automáticamente)
                     # -------------------------------------------------
-                    dias_transcurridos = len(df_anual)
-                    dias_totales = 365
-                    dias_restantes = max(dias_totales - dias_transcurridos, 0)
-                    upa_hc = None
-                    upa_dqo = None
-                    est_hc_eff = None
-                    est_dqo_eff = None
+                    est_hc = st.number_input(
+                        "Estimado HC medio hasta fin de año (ppm)",
+                        min_value=0.0,
+                        value=float(est_hc_guardado),
+                        step=0.1,
+                        key="upa_est_hc"
+                    )
                 
-                    if dias_transcurridos == 0:
-                        st.info("No hay suficientes datos para calcular la UPA.")
-                    else:
-                        # -------------------------------------------------
-                        # Cargar estimados persistentes (BBDD)
-                        # -------------------------------------------------
-                        est_hc_guardado = get_estimado("HC")
-                        est_dqo_guardado = get_estimado("DQO")
+                    est_dqo = st.number_input(
+                        "Estimado DQO medio hasta fin de año (ppm)",
+                        min_value=0.0,
+                        value=float(est_dqo_guardado),
+                        step=1.0,
+                        key="upa_est_dqo"
+                    )
                 
-                        if est_hc_guardado is None:
-                            est_hc_guardado = float(hc_anual) if hc_anual else 0.0
-                
-                        if est_dqo_guardado is None:
-                            est_dqo_guardado = float(dqo_anual) if dqo_anual else 0.0
-                
-                        # -------------------------------------------------
-                        # Inputs editables (NO guardan automáticamente)
-                        # -------------------------------------------------
-                        est_hc = st.number_input(
-                            "Estimado HC medio hasta fin de año (ppm)",
-                            min_value=0.0,
-                            value=float(est_hc_guardado),
-                            step=0.1,
-                            key="upa_est_hc"
+                    # -------------------------------------------------
+                    # 💾 Guardar estimados UPA (Postgres)
+                    # -------------------------------------------------
+                    if st.button("💾 Guardar estimados UPA"):
+                        ejecutar_sql_many(
+                            """
+                            INSERT INTO estimados_upa (anio, parametro, valor)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (anio, parametro)
+                            DO UPDATE SET valor = EXCLUDED.valor
+                            """,
+                            [
+                                (anio, "HC", float(est_hc)),
+                                (anio, "DQO", float(est_dqo)),
+                            ],
                         )
                 
-                        est_dqo = st.number_input(
-                            "Estimado DQO medio hasta fin de año (ppm)",
-                            min_value=0.0,
-                            value=float(est_dqo_guardado),
-                            step=1.0,
-                            key="upa_est_dqo"
+                        st.success("✅ Estimados UPA guardados correctamente")
+                        recargar_datos(
+                            recargar_analiticas=False,
+                            recargar_envio=False,
+                            recargar_estimados=True,
                         )
+                        st.rerun()
                 
-                        # -------------------------------------------------
-                        # 💾 Guardar estimados UPA (Postgres)
-                        # -------------------------------------------------
-                        if st.button("💾 Guardar estimados UPA"):
-                            ejecutar_sql_many(
-                                """
-                                INSERT INTO estimados_upa (anio, parametro, valor)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (anio, parametro)
-                                DO UPDATE SET valor = EXCLUDED.valor
-                                """,
-                                [
-                                    (anio, "HC", float(est_hc)),
-                                    (anio, "DQO", float(est_dqo)),
-                                ],
-                            )
+                    # -------------------------------------------------
+                    # 🔢 CÁLCULO ÚNICO DE UPA (FUENTE DE VERDAD)
+                    # -------------------------------------------------
+                    est_hc_eff = float(est_hc)
+                    est_dqo_eff = float(est_dqo)
                 
-                            st.success("✅ Estimados UPA guardados correctamente")
-                            recargar_datos(
-                                recargar_analiticas=False,
-                                recargar_envio=False,
-                                recargar_estimados=True,
-                            )
-                            st.rerun()
+                    upa_hc = calcular_upa(
+                        hc_anual,
+                        dias_transcurridos,
+                        est_hc_eff,
+                        dias_restantes
+                    )
                 
-                        # -------------------------------------------------
-                        # 🔢 CÁLCULO ÚNICO DE UPA (FUENTE DE VERDAD)
-                        # -------------------------------------------------
-                        est_hc_eff = float(est_hc)
-                        est_dqo_eff = float(est_dqo)
+                    upa_dqo = calcular_upa(
+                        dqo_anual,
+                        dias_transcurridos,
+                        est_dqo_eff,
+                        dias_restantes
+                    )
                 
-                        upa_hc = calcular_upa(
-                            hc_anual,
-                            dias_transcurridos,
-                            est_hc_eff,
-                            dias_restantes
+                    # -------------------------------------------------
+                    # Márgenes respecto al límite anual
+                    # -------------------------------------------------
+                    margen_hc = (
+                        LIMITES["HC"]["anual"] - upa_hc
+                        if upa_hc is not None else None
+                    )
+                
+                    margen_dqo = (
+                        LIMITES["DQO"]["anual"] - upa_dqo
+                        if upa_dqo is not None else None
+                    )
+                
+                    # -------------------------------------------------
+                    # Salida visual
+                    # -------------------------------------------------
+                    st.metric(
+                        "UPA HC (ppm)",
+                        valor_con_semaforo(
+                            upa_hc,
+                            "ppm",
+                            LIMITES["HC"]["anual"]
                         )
+                    )
+                    if margen_hc is not None:
+                        st.markdown(texto_margen(margen_hc))
                 
-                        upa_dqo = calcular_upa(
-                            dqo_anual,
-                            dias_transcurridos,
-                            est_dqo_eff,
-                            dias_restantes
-                        )
-                
-                        # -------------------------------------------------
-                        # Márgenes respecto al límite anual
-                        # -------------------------------------------------
-                        margen_hc = (
-                            LIMITES["HC"]["anual"] - upa_hc
-                            if upa_hc is not None else None
-                        )
-                
-                        margen_dqo = (
-                            LIMITES["DQO"]["anual"] - upa_dqo
-                            if upa_dqo is not None else None
-                        )
-                
-                        # -------------------------------------------------
-                        # Salida visual
-                        # -------------------------------------------------
-                        st.metric(
-                            "UPA HC (ppm)",
-                            valor_con_semaforo(
-                                upa_hc,
-                                "ppm",
-                                LIMITES["HC"]["anual"]
-                            )
-                        )
-                        if margen_hc is not None:
-                            st.markdown(texto_margen(margen_hc))
-                
-                        st.metric(
-                            "UPA DQO (ppm)",
+                    st.metric(
+                        "UPA DQO (ppm)",
                             valor_con_semaforo(
                                 upa_dqo,
                                 "ppm",
                                 LIMITES["DQO"]["anual"]
                             )
                         )
-                        if margen_dqo is not None:
-                            st.markdown(texto_margen(margen_dqo))
+                    if margen_dqo is not None:
+                        st.markdown(texto_margen(margen_dqo))
 
 
             # =================================================
@@ -903,10 +882,15 @@ with tab_dashboard:
                 conteos = stats_mensual["count"]
                 sumas = stats_mensual["sum"]
 
-                prom_acum = sumas.cumsum() / conteos.cumsum()
+                if parametro in ["m3 enviados", "DQO enviada (t)"]:
+                    acumulado = sumas.cumsum()
+                    nombre_acumulado = "Acumulado"
+                else:
+                    acumulado = sumas.cumsum() / conteos.cumsum()
+                    nombre_acumulado = "Promedio acumulado"
 
                 # --------- PROYECCIÓN UPA (CON TENDENCIA MENSUAL) ---------
-                proy = prom_acum.copy()
+                proy = acumulado.copy()
 
                 est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
                 meses_reales = conteos.dropna()
@@ -936,7 +920,10 @@ with tab_dashboard:
                             conteo_acum += dias_mes
 
                         if m >= ultimo_mes and conteo_acum > 0:
-                            proy.loc[m] = suma_acum / conteo_acum
+                            if parametro in ["m3 enviados", "DQO enviada (t)"]:
+                                proy.loc[m] = suma_acum
+                            else:
+                                proy.loc[m] = suma_acum / conteo_acum
                 
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
@@ -952,9 +939,9 @@ with tab_dashboard:
                 
                 fig.add_trace(go.Scatter(
                     x=nombres_meses,
-                    y=prom_acum,
+                    y=acumulado,
                     mode="lines+markers",
-                    name="Promedio acumulado",
+                    name=nombre_acumulado,
                     line=dict(width=3)
                 ))
                 
@@ -983,6 +970,14 @@ with tab_dashboard:
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("### 📐 Acumulados anuales")
+            st.caption("Salida FCA · días con envío a emisario")
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric("HC año (ppm)", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
+            a2.metric("DQO año (ppm)", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
+            a3.metric("m³ enviados año", f"{formatear_entero(caudal_anual)} m³")
+            a4.metric("DQO enviada año", f"{formatear_entero(dqo_t_anual)} t")
 
     # ---------- ESTADO PLANTA ----------
 
@@ -1248,7 +1243,7 @@ with tab_dashboard:
         st.plotly_chart(fig, use_container_width=True)
 
         if punto_sel != "Comparativo" and punto_sel == "Salida FCA" and not df_caudal.empty:
-            st.markdown("#### 🚚 m³ enviados (control diario)")
+            st.markdown("#### 🚰 m³ enviados (control diario)")
             df_c = df_caudal.copy()
             df_c["dia"] = pd.to_datetime(df_c["dia"])
             if "dia" in df_plot.columns:
