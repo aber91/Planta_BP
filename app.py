@@ -697,13 +697,21 @@ with tab_dashboard:
             dqo_t_mes = (dqo_mes * caudal_mes / 1_000_000) if dqo_mes is not None else None
             dqo_t_anual = (dqo_anual * caudal_anual / 1_000_000) if dqo_anual is not None else None
 
+            st.markdown("##### Mensuales")
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("HC mes (ppm)", valor_con_semaforo(hc_mes, "ppm", LIMITES["HC"]["anual"]))
             k2.metric("DQO mes (ppm)", valor_con_semaforo(dqo_mes, "ppm", LIMITES["DQO"]["anual"]))
             k3.metric("m³ enviados mes", f"{formatear_entero(caudal_mes)} m³")
             k4.metric("DQO enviada mes", f"{formatear_entero(dqo_t_mes)} t")
 
-            col_graph, col_upa = st.columns([1.6, 1])
+            st.markdown("##### Acumulados anuales")
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric("HC año (ppm)", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
+            a2.metric("DQO año (ppm)", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
+            a3.metric("m³ enviados año", f"{formatear_entero(caudal_anual)} m³")
+            a4.metric("DQO enviada año", f"{formatear_entero(dqo_t_anual)} t")
+
+            col_upa, col_graph = st.columns([1, 1.6])
 
             with col_upa:
                 st.markdown("### 🔮 UPA")
@@ -839,7 +847,7 @@ with tab_dashboard:
 
 
             # =================================================
-            # 🟩 COLUMNA DERECHA – GRÁFICO ANUAL
+            # 🟩 COLUMNA DERECHA – EVOLUCIÓN ANUAL
             # =================================================
             with col_graph:
                 st.markdown("### 📈 Evolución anual")
@@ -971,14 +979,6 @@ with tab_dashboard:
                 
                 st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### 📐 Acumulados anuales")
-            st.caption("Salida FCA · días con envío a emisario")
-            a1, a2, a3, a4 = st.columns(4)
-            a1.metric("HC año (ppm)", valor_con_semaforo(hc_anual, "ppm", LIMITES["HC"]["anual"]))
-            a2.metric("DQO año (ppm)", valor_con_semaforo(dqo_anual, "ppm", LIMITES["DQO"]["anual"]))
-            a3.metric("m³ enviados año", f"{formatear_entero(caudal_anual)} m³")
-            a4.metric("DQO enviada año", f"{formatear_entero(dqo_t_anual)} t")
-
     # ---------- ESTADO PLANTA ----------
 
     st.subheader("🟢 Estado actual de la planta – Último análisis disponible")
@@ -1041,7 +1041,7 @@ with tab_dashboard:
             st.info("Estado global pluviales: ⚪ Sin dato")
 
     # ---------- GRÁFICOS (MEJORADOS) ----------
-    st.subheader("📈 Análisis gráfico")
+    st.subheader("📈 Control analítico")
     @st.cache_data(show_spinner=False)
     def filtrar_df_por_periodo(df, periodo_sel, f_ini, f_fin):
         now = datetime.now()
@@ -1065,7 +1065,8 @@ with tab_dashboard:
     # -------------------------------------------------
     # Selectores
     # -------------------------------------------------
-    c1, c2, c3, c4 = st.columns(4)
+    st.caption("Análisis temporal de parámetros y comparación por puntos de muestreo.")
+    c1, c2, c3, c4 = st.columns([1.1, 1, 1, 1.2])
     
     punto_sel = c1.selectbox(
         "Punto",
@@ -1232,7 +1233,7 @@ with tab_dashboard:
         # Layout
         # -------------------------------------------------
         fig.update_layout(
-            height=450,
+            height=420,
             margin=dict(l=40, r=40, t=40, b=40),
             xaxis_title="Fecha",
             yaxis_title=param_sel,
@@ -1243,7 +1244,7 @@ with tab_dashboard:
         st.plotly_chart(fig, use_container_width=True)
 
         if punto_sel != "Comparativo" and punto_sel == "Salida FCA" and not df_caudal.empty:
-            st.markdown("#### 🚰 m³ enviados (control diario)")
+            st.markdown("#### 🚰 m³ enviados · control diario")
             df_c = df_caudal.copy()
             df_c["dia"] = pd.to_datetime(df_c["dia"])
             if "dia" in df_plot.columns:
@@ -1253,7 +1254,7 @@ with tab_dashboard:
             if not df_c_dia.empty:
                 fig_m3 = go.Figure()
                 fig_m3.add_trace(go.Bar(x=df_c_dia["dia"], y=df_c_dia["caudal_m3h"], name="m³ enviados"))
-                fig_m3.update_layout(height=260, margin=dict(l=40, r=40, t=20, b=20), xaxis_title="Fecha", yaxis_title="m³")
+                fig_m3.update_layout(height=280, margin=dict(l=30, r=30, t=30, b=20), xaxis_title="Fecha", yaxis_title="m³")
                 st.plotly_chart(fig_m3, use_container_width=True)
 
     else:
@@ -1263,7 +1264,7 @@ with tab_dashboard:
     # Eficiencias
     # -------------------------------------------------
     
-    st.markdown(f"### 🧪 Eficiencia de eliminación diaria – {param_sel}")
+    st.markdown(f"### 🧪 Eficiencia de eliminación diaria · {param_sel}")
     st.caption(f"Porcentaje de eliminación de {param_sel} · cálculo diario")
 
     df_eff = calcular_eficiencias_diarias(df_plot, param_sel)
@@ -1274,7 +1275,7 @@ with tab_dashboard:
         fig_eff = go.Figure()
     
         # ---- Selectores de etapas ----
-        c_eff1, c_eff2, c_eff3 = st.columns(3)
+        c_eff1, c_eff2, c_eff3 = st.columns(3, gap="small")
     
         mostrar_e1 = c_eff1.checkbox(
             "Entrada → X-507",
@@ -1347,6 +1348,7 @@ with tab_dashboard:
         )
     
         st.plotly_chart(fig_eff, use_container_width=True)
+        st.caption("Referencia orientativa: mantener la etapa X-507 → Salida FCA por encima del 70%.")
     
     else:
         st.info("No hay datos suficientes para calcular eficiencias.")
@@ -1355,6 +1357,7 @@ with tab_dashboard:
     # 🧠 MOSTRAR DIAGNÓSTICO AUTOMÁTICO
     # -------------------------------------------------
     st.markdown("### 🧠 Diagnóstico automático – HC y DQO")
+    st.caption("Resultado basado en tendencia EMA(7), estabilidad de entrada y eficiencia por etapas.")
     
     # -------------------------------------------------
     # 🧠 MOSTRAR RESULTADO DEL DIAGNÓSTICO
