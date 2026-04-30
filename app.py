@@ -159,6 +159,15 @@ anio = date.today().year
 st.set_page_config(page_title="Control de analíticas", layout="wide")
 st.title("💧 Control de analíticas – Planta de tratamiento de aguas")
 
+st.markdown("""
+<style>
+.block-container {padding-top: 1rem; padding-bottom: 2rem;}
+[data-testid="stMetric"] {background: linear-gradient(180deg,#f8fbff,#eef5ff); border:1px solid #d9e8ff; padding: 0.75rem; border-radius: 0.75rem;}
+h3, h4 {color:#113355;}
+</style>
+""", unsafe_allow_html=True)
+
+
 # =====================================================
 # BASE DE DATOS – ESTRUCTURA (CREACIÓN ÚNICA Y SEGURA)
 # =====================================================
@@ -366,7 +375,7 @@ def asegurar_ts(df):
     df = df.copy()
 
     if "dia" in df.columns:
-        df["ts"] = pd.to_ts(df["dia"])
+        df["ts"] = pd.to_datetime(df["dia"], errors="coerce")
         return df
 
     # Último recurso: no se puede ordenar
@@ -862,26 +871,30 @@ with tab_dashboard:
                 if parametro in LIMITES:
                     limite = LIMITES[parametro]["anual"]
 
-                df_val["mes"] = df_val["dia"].apply(lambda d: d.month)
+                df_anual_plot = df_val[df_val["dia"].apply(lambda d: d.year) == anio].copy()
+                df_anual_plot["mes"] = df_anual_plot["dia"].apply(lambda d: d.month)
+
                 df_caudal_calc = df_caudal.copy() if not df_caudal.empty else pd.DataFrame(columns=["dia", "caudal_m3h"])
                 if not df_caudal_calc.empty:
-                    df_caudal_calc["dia"] = pd.to_datetime(df_caudal_calc["dia"])
+                    df_caudal_calc["dia"] = pd.to_datetime(df_caudal_calc["dia"], errors="coerce")
+                    df_caudal_calc = df_caudal_calc.dropna(subset=["dia"])
+                    df_caudal_calc = df_caudal_calc[df_caudal_calc["dia"].dt.year == anio]
                     df_caudal_calc["mes"] = df_caudal_calc["dia"].dt.month
 
                 if parametro == "m3 enviados":
                     stats_mensual = df_caudal_calc.groupby("mes")["caudal_m3h"].sum().reindex(range(1,13)).to_frame("mean")
-                    stats_mensual["count"] = 1
+                    stats_mensual["count"] = stats_mensual["mean"].notna().astype(int)
                     stats_mensual["sum"] = stats_mensual["mean"]
                 elif parametro == "DQO enviada (t)":
-                    dqo_mes_df = df_val.groupby("mes")["DQO"].mean().reindex(range(1,13))
+                    dqo_mes_df = df_anual_plot.groupby("mes")["DQO"].mean().reindex(range(1,13))
                     m3_mes_df = df_caudal_calc.groupby("mes")["caudal_m3h"].sum().reindex(range(1,13)) if not df_caudal_calc.empty else pd.Series(index=range(1,13), dtype=float)
                     dqo_t_mes_df = (dqo_mes_df * m3_mes_df) / 1_000_000
                     stats_mensual = dqo_t_mes_df.to_frame("mean")
-                    stats_mensual["count"] = 1
+                    stats_mensual["count"] = stats_mensual["mean"].notna().astype(int)
                     stats_mensual["sum"] = stats_mensual["mean"]
                 else:
                     stats_mensual = (
-                        df_val.groupby("mes")[parametro]
+                        df_anual_plot.groupby("mes")[parametro]
                         .agg(["mean", "count", "sum"])
                         .reindex(range(1, 13))
                     )
@@ -894,13 +907,13 @@ with tab_dashboard:
                     acumulado = sumas.cumsum()
                     nombre_acumulado = "Acumulado"
                 else:
-                    acumulado = sumas.cumsum() / conteos.cumsum()
+                    acumulado = sumas.cumsum() / conteos.cumsum().replace(0, pd.NA)
                     nombre_acumulado = "Promedio acumulado"
 
                 # --------- PROYECCIÓN UPA (CON TENDENCIA MENSUAL) ---------
                 proy = acumulado.copy()
 
-                est_eff = est_hc_eff if parametro == "HC" else est_dqo_eff
+                est_eff = est_hc_eff if parametro == "HC" else (est_dqo_eff if parametro == "DQO" else None)
                 meses_reales = conteos.dropna()
 
                 if not meses_reales.empty and est_eff is not None:
@@ -936,7 +949,7 @@ with tab_dashboard:
                 meses = list(range(1, 13))
                 nombres_meses = [calendar.month_abbr[m] for m in meses]
                 
-                fig = go.Figure()
+                fig = go.Figure(layout=dict(template="plotly_white"))
                 
                 fig.add_bar(
                     x=nombres_meses,
