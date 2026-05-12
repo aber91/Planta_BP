@@ -151,7 +151,10 @@ LIMITES_PLUVIALES = {
     "DQO": 125,
 }
 
-anio = date.today().year
+ANIO_MINIMO = 2025
+anio_actual = date.today().year
+if "anio_calculo" not in st.session_state:
+    st.session_state.anio_calculo = max(anio_actual, ANIO_MINIMO)
 
 # -----------------------------------------------------
 # CONFIGURACIÓN STREAMLIT
@@ -326,7 +329,7 @@ def recargar_datos(recargar_analiticas=True, recargar_envio=True, recargar_estim
     if recargar_envio:
         st.session_state.df_envio = cargar_envio_emisario()
     if recargar_estimados:
-        st.session_state.df_est = cargar_estimados(anio)
+        st.session_state.df_est = cargar_estimados(st.session_state.anio_calculo)
     if recargar_caudal:
         st.session_state.df_caudal = cargar_caudal_emisario()
 
@@ -338,7 +341,7 @@ def cargar_datos_iniciales():
     if st.session_state.df_envio is None:
         st.session_state.df_envio = cargar_envio_emisario()
     if st.session_state.df_est is None:
-        st.session_state.df_est = cargar_estimados(anio)
+        st.session_state.df_est = cargar_estimados(st.session_state.anio_calculo)
     if st.session_state.df_caudal is None:
         st.session_state.df_caudal = cargar_caudal_emisario()
 
@@ -352,9 +355,8 @@ df_caudal = st.session_state.df_caudal.copy()
 # -----------------------------------------------------
 # ESTIMADOS UPA PERSISTENTES
 # -----------------------------------------------------
-df_est = st.session_state.df_est
-
 def get_estimado(param):
+    df_est = st.session_state.df_est if st.session_state.df_est is not None else pd.DataFrame()
     fila = df_est[df_est["parametro"] == param]
     if not fila.empty:
         return float(fila.iloc[0]["valor"])
@@ -660,6 +662,16 @@ with tab_dashboard:
 # =====================================================
 
     st.subheader("📊 Dashboard – Control anual de la planta")
+    anio = st.selectbox(
+        "Año de cálculo",
+        options=list(range(ANIO_MINIMO, anio_actual + 1)),
+        index=list(range(ANIO_MINIMO, anio_actual + 1)).index(st.session_state.anio_calculo),
+        key="anio_calculo",
+    )
+    if st.session_state.df_est is None or (
+        not st.session_state.df_est.empty and int(st.session_state.df_est.iloc[0]["anio"]) != anio
+    ):
+        st.session_state.df_est = cargar_estimados(anio)
 
     # -------------------------------------------------
     # Preparación de datos base (Salida FCA)
@@ -678,8 +690,7 @@ with tab_dashboard:
             st.warning("No hay analíticas válidas con envío a emisario.")
         else:
             hoy = date.today()
-            anio = hoy.year
-            mes_actual = hoy.month
+            mes_actual = hoy.month if anio == anio_actual else 12
 
             # =================================================
             # NUEVA ESTRUCTURA VISUAL DEL DASHBOARD
@@ -730,7 +741,7 @@ with tab_dashboard:
                 # Días reales considerados
                 # -------------------------------------------------
                 dias_transcurridos = len(df_anual)
-                dias_totales = 365
+                dias_totales = 366 if calendar.isleap(anio) else 365
                 dias_restantes = max(dias_totales - dias_transcurridos, 0)
                 upa_hc = None
                 upa_dqo = None
@@ -919,15 +930,14 @@ with tab_dashboard:
                 if not meses_reales.empty and est_eff is not None:
                     ultimo_mes = meses_reales.index.max()
                     hoy = date.today()
-                    anio_actual = hoy.year
-                    mes_actual = hoy.month
+                    mes_actual = hoy.month if anio == anio_actual else 12
 
                     suma_acum = 0.0
                     conteo_acum = 0
                     for m in range(1, 13):
                         suma_real = sumas.loc[m] if pd.notna(sumas.loc[m]) else 0.0
                         conteo_real = int(conteos.loc[m]) if pd.notna(conteos.loc[m]) else 0
-                        dias_mes = calendar.monthrange(anio_actual, m)[1]
+                        dias_mes = calendar.monthrange(anio, m)[1]
 
                         if m < mes_actual:
                             suma_acum += suma_real
@@ -1056,9 +1066,15 @@ with tab_dashboard:
     # ---------- GRÁFICOS (MEJORADOS) ----------
     st.subheader("📈 Control analítico")
     @st.cache_data(show_spinner=False)
-    def filtrar_df_por_periodo(df, periodo_sel, f_ini, f_fin):
+    def filtrar_df_por_periodo(df, periodo_sel, f_ini, f_fin, anio_sel=None):
         now = datetime.now()
     
+        if periodo_sel == "Todo histórico":
+            return df[df["ts"] >= pd.to_datetime(f"{ANIO_MINIMO}-01-01")]
+
+        elif periodo_sel == "Año de cálculo" and anio_sel is not None:
+            return df[df["ts"].dt.year == anio_sel]
+
         if periodo_sel == "Últimos 7 días":
             return df[df["ts"] >= now - timedelta(days=7)]
     
@@ -1097,8 +1113,8 @@ with tab_dashboard:
     
     periodo_sel = c3.selectbox(
         "Periodo",
-        ["Últimos 7 días", "Últimos 30 días", "Mes actual", "Rango personalizado"],
-        index=1,
+        ["Año de cálculo", "Todo histórico", "Últimos 7 días", "Últimos 30 días", "Mes actual", "Rango personalizado"],
+        index=0,
         key="graf_periodo"
     )
     
@@ -1114,7 +1130,8 @@ with tab_dashboard:
         st.session_state.df,
         periodo_sel,
         f_ini,
-        f_fin
+        f_fin,
+        anio_sel=anio,
     )
     
     # -------------------------------------------------
